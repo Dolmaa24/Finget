@@ -8,7 +8,7 @@ interface Props {
   currentAffordability: AffordabilityResult;
 }
 
-export const ScenarioSimulator: React.FC<Props> = ({ onSimulate, onClearSimulate }) => {
+export const ScenarioSimulator: React.FC<Props> = ({ onSimulate, onClearSimulate, currentAffordability }) => {
   const [amount, setAmount] = useState<string>('');
   const [simulation, setSimulation] = useState<SimulationResult | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -67,7 +67,7 @@ export const ScenarioSimulator: React.FC<Props> = ({ onSimulate, onClearSimulate
           <input 
             type="range" 
             min="0" 
-            max={Math.max(10000, currentAffordability.remaining * 1.5)} 
+            max={Math.max(10000, (currentAffordability.remainingBudget || 0) * 1.5)} 
             step="100"
             value={amount ? Number(amount) : 0}
             onChange={(e) => setAmount(e.target.value)}
@@ -75,7 +75,7 @@ export const ScenarioSimulator: React.FC<Props> = ({ onSimulate, onClearSimulate
           />
           <div className="flex justify-between text-xs text-slate-500 mt-2 font-medium">
             <span>₹0</span>
-            <span>₹{Math.max(10000, currentAffordability.remaining * 1.5).toLocaleString()}</span>
+            <span>₹{Math.max(10000, (currentAffordability.remainingBudget || 0) * 1.5).toLocaleString()}</span>
           </div>
         </div>
       </div>
