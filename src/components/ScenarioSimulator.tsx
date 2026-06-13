@@ -59,8 +59,25 @@ export const ScenarioSimulator: React.FC<Props> = ({ onSimulate, onClearSimulate
           value={amount ? Number(amount).toLocaleString() : ''}
           onChange={handleAmountChange}
           placeholder="0"
-          className="w-full bg-navy-900 border border-slate-600 rounded-2xl py-4 pl-10 pr-4 text-xl font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-slate-600"
+          className="w-full bg-navy-900 border border-slate-600 rounded-2xl py-4 pl-10 pr-4 text-xl font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-slate-600 mb-4"
         />
+        
+        {/* Interactive Slider */}
+        <div className="px-2">
+          <input 
+            type="range" 
+            min="0" 
+            max={Math.max(10000, currentAffordability.remaining * 1.5)} 
+            step="100"
+            value={amount ? Number(amount) : 0}
+            onChange={(e) => setAmount(e.target.value)}
+            className="w-full accent-primary h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+          />
+          <div className="flex justify-between text-xs text-slate-500 mt-2 font-medium">
+            <span>₹0</span>
+            <span>₹{Math.max(10000, currentAffordability.remaining * 1.5).toLocaleString()}</span>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-4">

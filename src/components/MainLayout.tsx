@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { BurgerSidebar } from './BurgerSidebar';
+import { ScopeToggle } from './ScopeToggle';
 import { Menu } from 'lucide-react';
 
 export const MainLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-navy-900 text-white flex">
+    <div className="min-h-screen bg-navy-900 text-white flex relative">
       {/* Floating Burger Menu Button (Mobile & Desktop) */}
       <button 
         onClick={() => setSidebarOpen(true)}
@@ -15,6 +16,9 @@ export const MainLayout: React.FC = () => {
       >
         <Menu className="w-6 h-6 text-slate-300" />
       </button>
+
+      {/* Global Scope Toggle */}
+      <ScopeToggle />
 
       {/* Sidebar Component */}
       <BurgerSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />

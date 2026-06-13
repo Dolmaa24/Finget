@@ -1,73 +1,78 @@
-# React + TypeScript + Vite
+# Finget: The Decision-First Financial System 💸🤖
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Finget isn't just another expense tracker—it's a comprehensive, AI-native collaborative finance platform designed to shift the focus from *tracking what you spent* to *deciding what you can safely spend right now*.
 
-Currently, two official plugins are available:
+## ✨ Novelties & Key Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### 1. Decision-First "Safe-to-Spend" Algorithm
+Traditional apps tell you what you spent last month. Finget calculates a **Safe Daily Allowance** in real-time. By dynamically subtracting mandatory obligations, savings goals, and current monthly spend from your income, Finget tells you exactly how much you can spend *today* without breaking your budget.
 
-## React Compiler
+### 2. Context-Aware AI Money Coach (SSE Streaming)
+Most financial bots give generic advice. Finget's AI Coach:
+- Has a persistent conversational memory layer (`AIConversation` model).
+- Streams responses chunk-by-chunk (using Server-Sent Events) for a native, ChatGPT-like typing experience.
+- Is deeply context-aware. It receives real-time injections of your income, expenses, safe daily spend, and transaction history directly into its prompt.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 3. Interactive Future Impact Simulator
+A slider-based "What-If" engine. Before making a large purchase (like a new phone or dinner), enter the amount into the simulator. Finget immediately calculates how that specific purchase will:
+- Deplete your remaining monthly budget.
+- Delay your savings goals (e.g., "This delays your vacation goal by 14 days").
+- Trigger dynamic risk warnings ("Warning: This exceeds your safe daily allowance").
 
-## Expanding the ESLint configuration
+### 4. "Friends Mode" Collaborative Context Engine
+Finance isn't just personal; it's social. Finget introduces a robust explicit context architecture.
+- Instead of implicitly switching states, the entire frontend and backend explicitly route data via `?context=user` or `?context=group&groupId=...`.
+- Features a **Global Scope Toggle** to seamlessly switch the entire application dashboard from "Personal Mode" to shared "Friends Mode" wallets.
+- Group-based Affordability: The engine aggregates the total income and obligations of all group members to calculate shared affordability.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 5. Multi-Layer Insights Engine
+The Insights Engine splits analysis into two pipelines:
+1. **Deterministic Rule Engine**: High-speed, rule-based algorithms (like the *Subscription Leak Detector* which spots identical recurring charges) and the *Financial Health Score*.
+2. **LLM Reasoning**: Passes complex, unstructured transaction data to OpenAI to generate deep, actionable anomalies that a simple script would miss.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🚀 Tech Stack
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Frontend
+- **React + Vite** for lightning-fast module replacement.
+- **Tailwind CSS** for ultra-minimalist, dark-themed, glassmorphic UI.
+- **React Router DOM** for modular page architecture (`<MainLayout>`, `<BurgerSidebar>`).
+- Custom Hooks (`useFingetBackend`, `useAiCoach`, `useGoals`, `useGroups`) handling explicit contexts and SSE streaming.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### Backend
+- **Node.js + Express**
+- **MongoDB + Mongoose** for flexible schema design (Users, Transactions, Goals, Groups, AIConversations).
+- **OpenAI API** for the LLM Insights Engine and Money Coach.
+- **JWT Authentication** and bcrypt password hashing.
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🛠️ Implementation & Architecture
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Our main challenge was extending an existing personal finance tracker into a multi-user, AI-native platform without breaking backward compatibility.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+We solved this using an **Explicit Over Implicit** design philosophy.
+Instead of relying on hidden global states that cause race conditions, we built a `ScopeContext` in React. The `<ScopeToggle />` component switches this state, and every downstream hook explicitly passes the context to the backend. The backend controllers (e.g., `transactionController`, `goalController`, `financeController`) dynamically branch their database queries and aggregation logic based on the explicit `req.query.context`.
+
+## 🚦 Getting Started
+
+1. Clone the repository
+2. Install dependencies for both frontend and backend:
+   ```bash
+   npm install
+   cd finget-backend && npm install
+   ```
+3. Create a `.env` file in the backend with:
+   ```env
+   MONGO_URI=your_mongodb_uri
+   JWT_SECRET=your_secret
+   OPENAI_API_KEY=your_openai_key
+   PORT=5000
+   ```
+4. Run the development servers:
+   ```bash
+   # In root directory (Frontend)
+   npm run dev
+
+   # In finget-backend directory (Backend)
+   npm run dev
+   ```
+
+Enjoy building wealth with Finget! 🚀
