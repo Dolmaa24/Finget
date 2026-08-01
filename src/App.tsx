@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LandingPage } from './pages/LandingPage';
+import { PricingPage } from './pages/PricingPage';
 import { Dashboard } from './pages/Dashboard';
 import { GoalsPage } from './pages/GoalsPage';
 import { InsightsPage } from './pages/InsightsPage';
@@ -10,6 +12,17 @@ import { TransactionsPage } from './pages/TransactionsPage';
 import { FutureImpactPage } from './pages/FutureImpactPage';
 import { MainLayout } from './components/MainLayout';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ScopeProvider } from './context/ScopeContext';
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -18,29 +31,32 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppContent() {
-  const { token } = useAuth();
-
   return (
-    <Routes>
-      {/* Public Route */}
-      <Route path="/" element={!token ? <LandingPage /> : <Navigate to="/dashboard" />} />
+    <>
+      <ScrollToTop />
+      <Routes>
+        {/* Public Routes - Landing page is always directly accessible at / */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
 
-      {/* Protected Routes wrapped in MainLayout */}
-      <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/goals" element={<GoalsPage />} />
-        <Route path="/insights" element={<InsightsPage />} />
-        <Route path="/coach" element={<AiCoachPage />} />
-        <Route path="/friends" element={<FriendsModePage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/transactions" element={<TransactionsPage />} />
-        <Route path="/future-impact" element={<FutureImpactPage />} />
-      </Route>
-    </Routes>
+        {/* Protected Routes wrapped in MainLayout */}
+        <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/goals" element={<GoalsPage />} />
+          <Route path="/insights" element={<InsightsPage />} />
+          <Route path="/coach" element={<AiCoachPage />} />
+          <Route path="/friends" element={<FriendsModePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/transactions" element={<TransactionsPage />} />
+          <Route path="/future-impact" element={<FutureImpactPage />} />
+        </Route>
+
+        {/* Catch-all fallback */}
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </>
   );
 }
-
-import { ScopeProvider } from './context/ScopeContext';
 
 function App() {
   return (
@@ -55,3 +71,5 @@ function App() {
 }
 
 export default App;
+
+

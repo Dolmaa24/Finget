@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BotMessageSquare, SendHorizontal, User } from 'lucide-react';
+import { Bot, SendHorizontal, User, Sparkles } from 'lucide-react';
 import type { Message } from '../hooks/useAiCoach';
 
 interface Props {
@@ -10,13 +10,26 @@ interface Props {
 
 export const AiMoneyCoach: React.FC<Props> = ({ messages, onSendMessage, isTyping }) => {
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
+
+  const quickPrompts = [
+    'Can I afford ₹3,500 dinner tonight?',
+    'What is my monthly burn rate?',
+    'Where am I leaking subscription money?',
+  ];
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     scrollToBottom();
   }, [messages, isTyping]);
 
@@ -29,83 +42,93 @@ export const AiMoneyCoach: React.FC<Props> = ({ messages, onSendMessage, isTypin
   };
 
   return (
-    <div className="flex flex-col h-full min-h-[400px] bg-navy-800 rounded-3xl border border-slate-700/50 shadow-lg overflow-hidden">
+    <div className="flex flex-col h-full min-h-[440px] glass-card-frosted rounded-3xl border border-white/15 shadow-[0_12px_40px_rgba(0,0,0,0.6)] overflow-hidden text-white">
       {/* Header */}
-      <div className="bg-navy-900/80 backdrop-blur-md border-b border-slate-700/50 p-4 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-          <BotMessageSquare className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h3 className="text-slate-100 font-semibold leading-tight">AI Money Coach</h3>
-          <p className="text-xs text-slate-400">Context-aware financial assistant</p>
+      <div className="bg-slate-950/40 backdrop-blur-xl border-b border-white/10 p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shadow-xs">
+            <Bot className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold font-display text-white leading-tight">AI Money Coach</h3>
+            <p className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>ONLINE ADVISOR</span>
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pr-2 custom-scrollbar">
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3.5 pr-2 custom-scrollbar max-h-[360px]">
         {messages.map((msg, idx) => (
           <div
             key={idx}
-            className={`flex items-end gap-2 max-w-[85%] ${
+            className={`flex items-end gap-2.5 max-w-[90%] ${
               msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
             }`}
           >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-              msg.role === 'user' ? 'bg-slate-700 text-slate-300' : 'bg-primary/20 text-primary'
-            }`}>
-              {msg.role === 'user' ? <User className="w-4 h-4" /> : <BotMessageSquare className="w-4 h-4" />}
-            </div>
             <div
-              className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+              className={`w-7 h-7 rounded-2xl flex items-center justify-center shrink-0 ${
                 msg.role === 'user'
-                  ? 'bg-primary text-white rounded-br-sm'
-                  : 'bg-navy-900 border border-slate-700 text-slate-200 rounded-bl-sm'
+                  ? 'bg-gradient-to-tr from-amber-500 to-rose-500 text-white'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
               }`}
             >
-              {/* If streaming response is still empty, show bubble */}
-              {msg.content === "" ? (
-                 <span className="flex gap-1 py-1">
-                   <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></span>
-                   <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                   <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
-                 </span>
-              ) : msg.content}
+              {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+            </div>
+
+            <div
+              className={`p-3.5 rounded-3xl text-xs leading-relaxed ${
+                msg.role === 'user'
+                  ? 'bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 text-white rounded-br-none shadow-md font-medium'
+                  : 'bg-slate-900/70 border border-white/15 text-slate-200 rounded-bl-none shadow-xs backdrop-blur-md'
+              }`}
+            >
+              {msg.content}
             </div>
           </div>
         ))}
-        {/* Loading Indicator when we haven't created the assistant bubble yet */}
-        {isTyping && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
-          <div className="flex items-center gap-2 max-w-[85%] mr-auto">
-             <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-               <BotMessageSquare className="w-4 h-4 text-primary" />
-             </div>
-             <div className="px-4 py-3 rounded-2xl bg-navy-900 border border-slate-700 text-slate-400 rounded-bl-sm flex gap-1">
-               <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></span>
-               <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-               <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
-             </div>
+
+        {isTyping && (
+          <div className="flex items-center gap-2 text-slate-400 text-xs font-semibold p-2">
+            <Sparkles className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            <span>Coach is analyzing ledger...</span>
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <form onSubmit={handleSubmit} className="p-4 bg-navy-900/50 border-t border-slate-700/50">
-        <div className="relative flex items-center bg-navy-900 rounded-full border border-slate-600 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+      {/* Quick Prompt Chips */}
+      <div className="p-3 border-t border-white/10 bg-slate-950/30 backdrop-blur-md flex flex-wrap gap-1.5">
+        {quickPrompts.map((p, idx) => (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => onSendMessage(p)}
+            className="text-[10px] font-medium bg-slate-900/70 hover:bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded-full border border-white/15 transition-all shadow-xs"
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {/* Input Box */}
+      <form onSubmit={handleSubmit} className="p-3 bg-slate-950/40 border-t border-white/10 flex items-center gap-2">
+        <div className="relative flex-1 flex items-center bg-slate-900/80 rounded-2xl border border-white/15 shadow-xs">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask AI Coach a financial question..."
             disabled={isTyping}
-            placeholder={isTyping ? "Coach is typing..." : "Ask 'Can I afford 4,000 for dinner?'"}
-            className="flex-1 bg-transparent py-3 pl-5 pr-12 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-50"
+            className="flex-1 bg-transparent py-2.5 pl-4 pr-10 text-xs text-white placeholder:text-slate-500 focus:outline-none disabled:opacity-50 font-medium"
           />
           <button
             type="submit"
-            disabled={!input.trim() || isTyping}
-            className="absolute right-2 p-2 rounded-full text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+            disabled={isTyping || !input.trim()}
+            className="absolute right-2 p-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 disabled:opacity-30 text-white transition-all shadow-xs"
           >
-            <SendHorizontal className="w-5 h-5" />
+            <SendHorizontal className="w-3.5 h-3.5" />
           </button>
         </div>
       </form>

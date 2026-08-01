@@ -5,8 +5,187 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    color-scheme: dark;
   }
   body {
-    @apply bg-navy-900 text-slate-100 font-sans antialiased;
+    @apply bg-[#06080d] text-slate-100 font-sans antialiased overflow-x-hidden;
+    color: #f1f5f9;
   }
 }
+
+/* Chromatic Iridescent Liquid Glassmorphism Tokens */
+@layer utilities {
+  /* Completely Visible Constant Luxury Iridescent Background */
+  .fixed-luxury-bg {
+    position: fixed;
+    inset: 0;
+    background-image: url('/bg-glass.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    z-index: -20;
+    pointer-events: none;
+    opacity: 1;
+    filter: none;
+  }
+
+  /* Ultra-Subtle Iridescent Ambient Light Overlay */
+  .ambient-light-overlay {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.06) 0%, rgba(168, 85, 247, 0.04) 45%, transparent 70%);
+    z-index: -10;
+    pointer-events: none;
+  }
+
+  /* High-Transparency Dark Liquid Glass Panels */
+  .glass-card {
+    background: rgba(10, 14, 24, 0.55);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.5), inset 0 1px 1.5px rgba(255, 255, 255, 0.18);
+    border-radius: 1.75rem;
+    color: #f1f5f9;
+  }
+
+  .glass-card-frosted {
+    background: rgba(12, 17, 30, 0.62);
+    backdrop-filter: blur(22px) saturate(190%);
+    -webkit-backdrop-filter: blur(22px) saturate(190%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 20px 45px -12px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.22);
+    border-radius: 1.75rem;
+    color: #f1f5f9;
+  }
+
+  .glass-card-frosted-heavy {
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(28px) saturate(200%);
+    -webkit-backdrop-filter: blur(28px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 25px 55px -15px rgba(0, 0, 0, 0.7), inset 0 1.5px 2px rgba(255, 255, 255, 0.28);
+    border-radius: 2rem;
+    color: #f8fafc;
+  }
+
+  .glass-card-amber {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(168, 85, 247, 0.12) 50%, rgba(6, 182, 212, 0.08) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    box-shadow: 0 18px 40px -10px rgba(245, 158, 11, 0.18), inset 0 1px 1.5px rgba(255, 255, 255, 0.3);
+    border-radius: 1.75rem;
+    color: #f8fafc;
+  }
+
+  .glass-card-dark {
+    background: rgba(6, 9, 15, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+    border-radius: 1.75rem;
+  }
+
+  /* Iridescent & Dark Pill Buttons */
+  .dark-pill-btn {
+    background: #ffffff;
+    color: #090d16;
+    font-weight: 700;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4), inset 0 1px 1px #ffffff;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .dark-pill-btn:hover {
+    background: #f1f5f9;
+    transform: translateY(-1.5px);
+    box-shadow: 0 12px 28px -4px rgba(255, 255, 255, 0.25);
+  }
+  .dark-pill-btn:active {
+    transform: scale(0.98);
+  }
+
+  .amber-pill-btn {
+    background: linear-gradient(135deg, #f59e0b 0%, #ea580c 45%, #c026d3 100%);
+    color: #ffffff;
+    font-weight: 700;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 10px 28px -5px rgba(234, 88, 12, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.45);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .amber-pill-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px -4px rgba(234, 88, 12, 0.65), 0 0 20px rgba(192, 38, 211, 0.4);
+  }
+  .amber-pill-btn:active {
+    transform: scale(0.98);
+  }
+
+  .glass-pill-btn {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(14px);
+    color: #f8fafc;
+    font-weight: 600;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+    transition: all 0.25s ease;
+  }
+  .glass-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.35);
+    transform: translateY(-1.5px);
+    box-shadow: 0 8px 24px -3px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Color aliases bound to chromatic liquid tones */
+  .cyber-btn-cyan {
+    @apply amber-pill-btn;
+  }
+  .cyber-btn-purple {
+    @apply dark-pill-btn;
+  }
+  .cyber-btn-glass {
+    @apply glass-pill-btn;
+  }
+  .cyber-btn-emerald {
+    @apply amber-pill-btn;
+  }
+  .glow-text-cyan {
+    color: #38bdf8;
+  }
+  .glow-text-emerald {
+    color: #34d399;
+  }
+  .glow-text-violet {
+    color: #c084fc;
+  }
+  .glow-text-amber {
+    color: #fbbf24;
+  }
+}
+
+/* Minimal Refined Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+
+
+

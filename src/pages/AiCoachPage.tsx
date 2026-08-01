@@ -3,6 +3,7 @@ import { AiMoneyCoach } from '../components/AiMoneyCoach';
 import { useAiCoach } from '../hooks/useAiCoach';
 import { useScope } from '../context/ScopeContext';
 import { fetchAffordability } from '../api';
+import { Cpu } from 'lucide-react';
 
 export const AiCoachPage: React.FC = () => {
   const { context, groupId } = useScope();
@@ -30,12 +31,31 @@ export const AiCoachPage: React.FC = () => {
   };
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto flex flex-col h-[80vh]">
-      <h1 className="text-3xl font-black text-white mb-2">AI Coach</h1>
-      <p className="text-slate-400 mb-6">
-        Real-time streaming advice using your transactions, goals, and patterns.
-        {context === 'group' && groupId ? ' Group-aware mode.' : ''}
-      </p>
+    <div className="max-w-5xl mx-auto flex flex-col h-[calc(100vh-140px)] space-y-6 animate-fadeIn">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-bold text-amber-700 uppercase tracking-widest">
+              AI ADVISORY ENGINE
+            </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span className="text-[11px] font-semibold text-stone-500">
+              {context === 'group' ? 'Squad Synced' : 'Personal Model'}
+            </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-stone-900">
+            AI Money Coach & Strategist
+          </h1>
+          <p className="text-xs text-stone-600 mt-0.5 font-medium">
+            Real-time advisory powered by transaction histories, savings velocities, and target horizons.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full glass-card-frosted border border-white/80 text-amber-900 text-xs font-bold shrink-0 shadow-xs">
+          <Cpu className="w-4 h-4 text-amber-600" />
+          <span>Finget Advisor Engine: Online</span>
+        </div>
+      </div>
 
       <div className="flex-1 min-h-0">
         <AiMoneyCoach messages={messages} onSendMessage={handleSend} isTyping={isTyping} />
@@ -43,3 +63,5 @@ export const AiCoachPage: React.FC = () => {
     </div>
   );
 };
+
+

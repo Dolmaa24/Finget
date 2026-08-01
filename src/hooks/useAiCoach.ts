@@ -21,8 +21,8 @@ export function useAiCoach(contextScope: { context?: 'user' | 'group'; groupId?:
         if (cancelled || !hist?.length) return;
         setMessages(
           hist
-            .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+            .filter((m: any) => m.role === 'user' || m.role === 'assistant')
+            .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
         );
       } catch {
         /* no history */
