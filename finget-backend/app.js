@@ -53,6 +53,7 @@ function createApp() {
   app.use("/api/groups", require("./routes/groupRoutes"));
   app.use("/api/receipts", require("./routes/receiptRoutes"));
   app.use("/api/tokens", require("./routes/apiTokenRoutes"));
+  app.use("/api/deflections", require("./routes/deflectionRoutes"));
   app.use("/api/share", require("./routes/shareCardRoutes"));
 
   /**

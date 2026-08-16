@@ -10,6 +10,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { FutureImpactPage } from './pages/FutureImpactPage';
 import { ExtensionConnectPage } from './pages/ExtensionConnectPage';
+import { LedgerPage } from './pages/LedgerPage';
 import { AppShell } from './components/AppShell';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/authStore';
@@ -29,6 +30,7 @@ function AppRoutes() {
         <Route path="/goals" element={<GoalsPage />} />
         <Route path="/split" element={<SplitPage />} />
         <Route path="/future-impact" element={<FutureImpactPage />} />
+        <Route path="/ledger" element={<LedgerPage />} />
         <Route path="/insights" element={<InsightsPage />} />
         <Route path="/coach" element={<AiCoachPage />} />
         <Route path="/friends" element={<FriendsModePage />} />

@@ -4,7 +4,7 @@
    personal and Friends mode can never silently read each other.
    ============================================================ */
 
-export const API_ORIGIN = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+export const API_ORIGIN = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 const API = `${API_ORIGIN}/api`;
 
 export type Scope = 'user' | 'group';
@@ -53,7 +53,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
     res = await fetch(`${API}${path}`, { ...options, headers });
   } catch {
     throw new ApiError(
-      'Cannot reach the Finget server. Is the backend running on port 5000?',
+      'Cannot reach the Finget server. Is the backend running on port 5001?',
       0
     );
   }
@@ -106,6 +106,9 @@ export interface Affordability {
   expenses: number;
   savingsTarget: number;
   emergencyBuffer: number;
+  /** Ring-fenced by live 48-hour vault holds. Not spent, not available. */
+  held: number;
+  heldPaise: number;
   daysLeftInMonth: number;
   monthlyBurnRate: number;
   scope: Scope;
@@ -229,11 +232,20 @@ export const financeApi = {
 
 /* ------------------------ api tokens -------------------------- */
 
+/** What a scoped credential is allowed to reach. One entry, one route. */
+export type TokenScope = 'translate' | 'deflect';
+
+/** Plain-language labels for the connect page and Settings. */
+export const SCOPE_LABELS: Record<TokenScope, string> = {
+  translate: 'Ask what a price means for your goals',
+  deflect: 'Put something in your 48-hour vault',
+};
+
 /** A scoped credential held by something that is not the web app. */
 export interface ApiToken {
   _id: string;
   name: string;
-  scope: 'translate';
+  scopes: TokenScope[];
   /** e.g. "fgt_A1b2C3" — enough to tell two apart, not enough to use. */
   prefix: string;
   lastUsedAt?: string;
@@ -248,13 +260,81 @@ export const tokenApi = {
    * The plaintext token comes back exactly once, here. It is never stored by
    * the app and cannot be re-read — losing it means minting a new one.
    */
-  create: (name?: string) =>
+  create: (name?: string, scopes: TokenScope[] = ['translate', 'deflect']) =>
     api<{ token: string; apiToken: ApiToken }>('/tokens', {
       method: 'POST',
-      body: JSON.stringify({ scope: 'translate', name }),
+      body: JSON.stringify({ scopes, name }),
     }),
 
   revoke: (id: string) => api<{ msg: string }>(`/tokens/${id}`, { method: 'DELETE' }),
+};
+
+/* ------------------------ deflections ------------------------- */
+
+export type DeflectionState = 'considering' | 'deflected' | 'bought';
+
+export interface Deflection {
+  _id: string;
+  label: string;
+  amountPaise: number;
+  sourceUrl?: string;
+  state: DeflectionState;
+  vaultUntil?: string;
+  decidedAt?: string;
+  autoResolved?: boolean;
+  createdAt: string;
+  translationSnapshot?: {
+    headline?: string;
+    headlineKind?: HeadlineKind;
+    goalName?: string;
+    riskAfter?: RiskLevel;
+  };
+}
+
+/** Money kept. There is deliberately no "spent anyway" total in this shape. */
+export interface Ledger {
+  scope: Scope;
+  month: number;
+  quarter: number;
+  allTime: number;
+  count: { month: number; quarter: number; allTime: number };
+  /** Null until there is something to translate — never "0 days of Goa". */
+  headline: { text: string; kind: HeadlineKind; goalName: string | null } | null;
+  held: number;
+  heldPaise: number;
+  holds: Deflection[];
+  deflections: Deflection[];
+}
+
+export const deflectionApi = {
+  /** "I want this." Ring-fences the amount for 48 hours, immediately. */
+  hold: (scope: ScopeRef, body: { label: string; amountPaise: number; sourceUrl?: string }) =>
+    api<{
+      deflection: Deflection;
+      vaultHours: number;
+      graceHours: number;
+      safeToSpend: {
+        before: { remaining: number; safeDaily: number; risk: RiskLevel };
+        after: { remaining: number; safeDaily: number; risk: RiskLevel };
+      };
+    }>('/deflections', { method: 'POST', body: JSON.stringify({ ...body, ...scopeBody(scope) }) }),
+
+  resolve: (scope: ScopeRef, id: string, decision: 'deflected' | 'bought') =>
+    api<{
+      deflection: Deflection;
+      released: boolean;
+      safeToSpend: { remaining: number; safeDaily: number; risk: RiskLevel };
+    }>(`/deflections/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, ...scopeBody(scope) }),
+    }),
+
+  ledger: (scope: ScopeRef) =>
+    api<Ledger>(`/deflections/ledger${buildQuery(scope.context, scope.groupId)}`),
+
+  /** Holds whose 48 hours are up and which are waiting on an answer. */
+  pending: (scope: ScopeRef) =>
+    api<Deflection[]>(`/deflections/pending${buildQuery(scope.context, scope.groupId)}`),
 };
 
 /* -------------------------- share ----------------------------- */
@@ -280,6 +360,13 @@ export const shareApi = {
     api<ShareCard>('/share', {
       method: 'POST',
       body: JSON.stringify({ kind: 'translate', amountPaise, ...scopeBody(scope) }),
+    }),
+
+  /** The quarter's deflection total. The server refuses to mint one at zero. */
+  createDeflection: (scope: ScopeRef) =>
+    api<ShareCard>('/share', {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'deflection', ...scopeBody(scope) }),
     }),
 
   list: () => api<ShareCard[]>('/share'),

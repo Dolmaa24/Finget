@@ -77,6 +77,15 @@ describe("tone", () => {
     expect(statLine(card("translate", {}))).toBeNull();
     expect(statLine(card("wrapped", { tripName: "T" }))).toBeNull();
   });
+
+  it("counts in grammatical English — the first card anyone shares says 1", () => {
+    expect(statLine(card("deflection", { count: 1, period: "this quarter" }))).toBe(
+      "1 decision, this quarter"
+    );
+    expect(statLine(card("deflection", { count: 7, period: "this quarter" }))).toBe(
+      "7 decisions, this quarter"
+    );
+  });
 });
 
 describe("rendering", () => {

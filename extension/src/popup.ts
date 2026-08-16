@@ -15,7 +15,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 function appUrlFor(apiBaseUrl: string): string {
   try {
     const api = new URL(apiBaseUrl);
-    // The dev API is on :5000 and the web app on :5173. Anywhere else, the app
+    // The dev API is on :5001 and the web app on :5173. Anywhere else, the app
     // and API share a host and only the /api prefix differs.
     if (api.hostname === "localhost" || api.hostname === "127.0.0.1") {
       return `${api.protocol}//${api.hostname}:5173/extension/connect`;

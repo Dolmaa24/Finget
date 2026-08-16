@@ -2,10 +2,14 @@ const { mint, listForUser, revoke } = require("../services/apiTokenService");
 const { can, CAPABILITIES, explain } = require("../services/entitlements");
 const User = require("../models/User");
 
-/** Scopes a user is allowed to mint for themselves, and what each one gates on. */
+/** Scopes a user may mint for themselves, and what each one gates on. */
 const MINTABLE = {
   translate: CAPABILITIES.BROWSER_EXTENSION,
+  deflect: CAPABILITIES.BROWSER_EXTENSION,
 };
+
+/** What the browser extension asks for when nothing is specified. */
+const DEFAULT_SCOPES = ["translate", "deflect"];
 
 /**
  * `POST /api/tokens` — mint a scoped token.
@@ -15,24 +19,39 @@ const MINTABLE = {
  */
 exports.create = async (req, res) => {
   try {
-    const scope = req.body.scope || "translate";
-    const capability = MINTABLE[scope];
+    // Accepts `scopes: [...]`, or a single `scope` for callers written against
+    // the Milestone 1 shape.
+    const requested = Array.isArray(req.body.scopes)
+      ? req.body.scopes
+      : req.body.scope
+        ? [req.body.scope]
+        : DEFAULT_SCOPES;
 
-    if (!capability) {
-      return res.status(400).json({ msg: `Unknown token scope: ${scope}` });
+    if (requested.length === 0) {
+      return res.status(400).json({ msg: "A token needs at least one scope" });
+    }
+
+    const unknown = requested.find((s) => !MINTABLE[s]);
+    if (unknown) {
+      return res.status(400).json({ msg: `Unknown token scope: ${unknown}` });
     }
 
     const user = await User.findById(req.user);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
-    if (!can(user, capability)) {
-      return res.status(403).json({ msg: explain(capability), capability });
+    // Every requested scope must be permitted — a token is only as narrow as
+    // its widest grant.
+    for (const scope of requested) {
+      const capability = MINTABLE[scope];
+      if (!can(user, capability)) {
+        return res.status(403).json({ msg: explain(capability), capability });
+      }
     }
 
     const { plaintext, doc } = await mint({
       userId: req.user,
       name: req.body.name,
-      scope,
+      scopes: requested,
     });
 
     // The only time the plaintext is ever returned. Not logged, not re-readable.
@@ -41,7 +60,7 @@ exports.create = async (req, res) => {
       apiToken: {
         _id: doc._id,
         name: doc.name,
-        scope: doc.scope,
+        scopes: doc.scopes,
         prefix: doc.prefix,
         createdAt: doc.createdAt,
         expiresAt: doc.expiresAt,

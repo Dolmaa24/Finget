@@ -87,6 +87,8 @@ const EMPTY_AFFORDABILITY: Affordability = {
   expenses: 0,
   savingsTarget: 0,
   emergencyBuffer: 0,
+  held: 0,
+  heldPaise: 0,
   daysLeftInMonth: 30,
   monthlyBurnRate: 0,
   scope: 'user',

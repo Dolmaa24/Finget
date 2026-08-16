@@ -29,9 +29,9 @@ async function makeUser(name = "Dolma", email = "dolma@test.com") {
   return { id: res.body.user._id, auth: `Bearer ${res.body.token}` };
 }
 
-/** Mints a translate token through the API and returns the plaintext. */
-async function connectExtension(auth) {
-  const res = await request(app).post("/api/tokens").set("Authorization", auth).send({});
+/** Mints an extension token through the API and returns the plaintext. */
+async function connectExtension(auth, body = {}) {
+  const res = await request(app).post("/api/tokens").set("Authorization", auth).send(body);
   expect(res.status).toBe(201);
   return res.body.token;
 }
@@ -116,12 +116,49 @@ describe("scope enforcement", () => {
       ["get", "/api/tokens"],
       ["get", "/api/share"],
       ["post", "/api/finance/simulate"],
+      // The vault: an extension token may OPEN a hold and nothing else. It
+      // cannot decide one, and it cannot read what you kept.
+      ["get", "/api/deflections/ledger?context=user"],
+      ["get", "/api/deflections/pending?context=user"],
     ];
 
     for (const [method, path] of forbidden) {
       const res = await request(app)[method](path).set("Authorization", auth).send({});
       expect(res.status, `${method.toUpperCase()} ${path} should reject an extension token`).toBe(401);
     }
+  });
+
+  it("can open a vault hold but cannot decide one", async () => {
+    const user = await makeUser();
+    const plaintext = await connectExtension(user.auth);
+    const auth = `Bearer ${plaintext}`;
+
+    const opened = await request(app)
+      .post("/api/deflections")
+      .set("Authorization", auth)
+      .send({ label: "Headphones", amountPaise: 849900, context: "user" });
+    expect(opened.status).toBe(201);
+
+    // Deciding happens in the app, where the number being decided against is
+    // on screen. A stolen extension token can only ring-fence money, which
+    // releases itself after 72 hours.
+    const decided = await request(app)
+      .post(`/api/deflections/${opened.body.deflection._id}/resolve`)
+      .set("Authorization", auth)
+      .send({ decision: "bought", context: "user" });
+    expect(decided.status).toBe(401);
+  });
+
+  it("a translate-only token cannot open a hold", async () => {
+    const user = await makeUser();
+    const plaintext = await connectExtension(user.auth, { scopes: ["translate"] });
+
+    const res = await request(app)
+      .post("/api/deflections")
+      .set("Authorization", `Bearer ${plaintext}`)
+      .send({ label: "Headphones", amountPaise: 849900, context: "user" });
+
+    expect(res.status).toBe(401);
   });
 });
 
@@ -189,10 +226,21 @@ describe("verify()", () => {
     expect(await verify(plaintext, "translate")).toBeNull();
   });
 
-  it("rejects a token presented for the wrong scope", async () => {
+  it("rejects a token presented for a scope it does not carry", async () => {
     const user = await makeUser();
-    const { plaintext } = await mint({ userId: user.id });
+    const { plaintext } = await mint({ userId: user.id, scopes: ["translate"] });
     expect(await verify(plaintext, "some_other_scope")).toBeNull();
+    // Narrow by construction: a translate-only token cannot open a vault hold.
+    expect(await verify(plaintext, "deflect")).toBeNull();
+    expect(await verify(plaintext, "translate")).toBeTruthy();
+  });
+
+  it("honours every scope on a multi-scope token", async () => {
+    const user = await makeUser();
+    const { plaintext } = await mint({ userId: user.id, scopes: ["translate", "deflect"] });
+    expect(await verify(plaintext, "translate")).toBeTruthy();
+    expect(await verify(plaintext, "deflect")).toBeTruthy();
+    expect(await verify(plaintext, "wrapped_export")).toBeNull();
   });
 
   it("rejects anything without the fgt_ prefix without hitting the database", async () => {

@@ -24,6 +24,21 @@ class ScopeError extends Error {
  * @throws {ScopeError} 400/403 for a missing or unauthorized group
  */
 async function resolveScope({ userId, context, groupId }) {
+  const scope = await resolveScopeWithoutHolds({ userId, context, groupId });
+
+  /**
+   * Live 48-hour vault holds, resolved once here so every surface downstream
+   * gets the same figure without having to remember to ask for it. Required
+   * lazily to keep the module graph acyclic — vaultService needs
+   * affordabilityService, which must not need this file.
+   */
+  const { heldPaiseFor } = require("./vaultService");
+  scope.heldPaise = await heldPaiseFor(scope, userId);
+
+  return scope;
+}
+
+async function resolveScopeWithoutHolds({ userId, context, groupId }) {
   const isGroup = context === "group";
 
   if (isGroup && !groupId) {
@@ -89,4 +104,25 @@ function handleScopeError(err, res) {
   return res.status(500).json({ error: err.message });
 }
 
-module.exports = { resolveScope, goalsForScope, ScopeError, handleScopeError };
+/**
+ * Affordability for a resolved scope, with that scope's vault holds already
+ * subtracted. Every caller should use this rather than reaching for
+ * `calculateAffordability` directly — forgetting `heldPaise` is the one way to
+ * make the dashboard and the translator disagree.
+ */
+function affordabilityForScope(scope, now = new Date()) {
+  const { calculateAffordability } = require("./affordabilityService");
+  return calculateAffordability(scope.owner, scope.transactions, scope.settings, {
+    now,
+    heldPaise: scope.heldPaise || 0,
+  });
+}
+
+module.exports = {
+  resolveScope,
+  resolveScopeWithoutHolds,
+  affordabilityForScope,
+  goalsForScope,
+  ScopeError,
+  handleScopeError,
+};

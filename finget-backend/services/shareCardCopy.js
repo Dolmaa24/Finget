@@ -67,7 +67,9 @@ function statLine(card) {
     case "translate":
       return RISK_LINE[p.riskAfter] || null;
     case "deflection":
-      return p.count ? `${p.count} decisions, ${p.period || "this month"}` : null;
+      return p.count
+        ? `${p.count} ${p.count === 1 ? "decision" : "decisions"}, ${p.period || "this month"}`
+        : null;
     case "wrapped":
       return p.topCategory ? `Most of it went on ${p.topCategory}` : null;
     case "trip_invite":

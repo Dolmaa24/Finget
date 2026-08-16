@@ -1,6 +1,5 @@
 const { toPaise, fromPaise } = require("../utils/money");
-const { calculateAffordability } = require("./affordabilityService");
-const { goalsForScope } = require("./scopeResolver");
+const { goalsForScope, affordabilityForScope } = require("./scopeResolver");
 
 /**
  * Goal currency — Finget's actual product.
@@ -157,7 +156,7 @@ function computeTranslation({ affordability, goals = [], amountPaise }) {
  * so membership has already been enforced by the time we get here.
  */
 async function translate(scope, amountPaise) {
-  const affordability = calculateAffordability(scope.owner, scope.transactions, scope.settings);
+  const affordability = affordabilityForScope(scope);
   const goals = await goalsForScope(scope);
   return computeTranslation({ affordability, goals, amountPaise });
 }

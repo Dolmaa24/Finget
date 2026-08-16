@@ -7,6 +7,7 @@ const Group = require("./models/Group");
 const { isGroupMember } = require("./utils/groupAuth");
 const { isAiConfigured, PROVIDER_NAME, MODEL } = require("./services/aiClient");
 const { isPaywallEnabled } = require("./services/entitlements");
+const { startVaultSweep } = require("./jobs/vaultSweep");
 const { createApp } = require("./app");
 
 if (!process.env.JWT_SECRET) {
@@ -57,7 +58,7 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 server.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
@@ -67,4 +68,9 @@ server.listen(PORT, () => {
     console.log("Note: no GROQ_API_KEY set — AI coach and AI insights run in degraded mode.");
   }
   console.log(`Paywall: ${isPaywallEnabled() ? "ENABLED" : "disabled (all gates open)"}`);
+
+  // Lives here rather than in app.js so supertest can mount the app without
+  // starting timers.
+  startVaultSweep();
+  console.log("Vault sweep: running every 15 minutes");
 });

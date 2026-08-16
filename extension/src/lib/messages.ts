@@ -26,11 +26,16 @@ export interface ConnectionState {
   tokenPrefix?: string;
 }
 
+export type DeflectResult =
+  | { ok: true; heldUntil: string; vaultHours: number }
+  | { ok: false; reason: "logged-out" | "offline" | "rate-limited" | "error"; message?: string };
+
 export type Message =
   | { type: "translate"; amountPaise: number }
+  | { type: "deflect"; amountPaise: number; label: string; sourceUrl?: string }
   | { type: "get-state" }
   | { type: "disconnect" }
   /** Sent by the connect content script after the web app hands over a token. */
   | { type: "pair"; token: string; apiBaseUrl?: string };
 
-export type Response = TranslateResult | ConnectionState | { ok: boolean };
+export type Response = TranslateResult | DeflectResult | ConnectionState | { ok: boolean };

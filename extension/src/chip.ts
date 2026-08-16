@@ -1,5 +1,6 @@
 import { formatInr } from "./lib/price";
-import type { ChipTranslation } from "./lib/messages";
+import { labelFrom } from "./lib/label";
+import type { ChipTranslation, DeflectResult } from "./lib/messages";
 
 /**
  * The chip.
@@ -102,6 +103,9 @@ button {
 }
 button:disabled { color: #a9a096; background: rgba(60, 48, 38, 0.06); cursor: default; }
 button:focus-visible { outline: 2px solid #5b54d6; outline-offset: 2px; }
+button.held { color: #2f8f63; background: rgba(47, 143, 99, 0.12); }
+.note { font-size: 12px; color: #5f574e; flex-basis: 100%; }
+.note--error { color: #c0503c; }
 `;
 
 /** The risk clause. Calm, factual, never a verdict about the person. */
@@ -110,6 +114,12 @@ const RISK_TEXT: Record<ChipTranslation["riskAfter"], string> = {
   Warning: "this gets close to your buffer",
   Risky: "this goes past your buffer",
 };
+
+/** What the ledger will call this, read off the page. See lib/label.ts. */
+function pageLabel(): string {
+  const og = document.querySelector('meta[property="og:title"]')?.getAttribute("content");
+  return labelFrom(og, document.title);
+}
 
 function buildRoot(): ShadowRoot {
   let host = document.getElementById(HOST_ID);
@@ -172,21 +182,63 @@ export function renderChip(anchor: Element, translation: ChipTranslation) {
     risk.textContent = RISK_TEXT[translation.riskAfter] ?? "";
 
     /**
-     * Milestone 2 turns this on. Shipped disabled rather than hidden so the
-     * affordance is discoverable, and so the layout does not shift when M2
-     * enables it.
+     * The 48-hour vault, from the product page.
+     *
+     * Pressing it ring-fences the amount immediately — the number in the app
+     * moves before the person has left the tab. The label for the ledger is
+     * taken from the page title rather than asked for: a prompt here would be
+     * friction at exactly the moment the feature needs to be effortless.
      */
     const deflect = document.createElement("button");
     deflect.type = "button";
-    deflect.disabled = true;
     deflect.textContent = "Think about it";
-    deflect.title = "The 48-hour vault arrives in the next Finget release.";
+    deflect.title = "Hold this for 48 hours and take it out of your safe-to-spend";
+
+    const note = document.createElement("div");
+    note.className = "note";
+    note.hidden = true;
+
+    deflect.addEventListener("click", async () => {
+      // Disabled first: a second click before the request returns would open a
+      // second hold for the same product.
+      deflect.disabled = true;
+      deflect.textContent = "Holding…";
+
+      try {
+        const result: DeflectResult = await chrome.runtime.sendMessage({
+          type: "deflect",
+          amountPaise: translation.amountPaise,
+          label: pageLabel(),
+          sourceUrl: location.href,
+        });
+
+        if (result?.ok) {
+          deflect.textContent = "In your vault";
+          deflect.classList.add("held");
+          note.hidden = false;
+          note.textContent = `Held for ${result.vaultHours} hours. Finget will ask you once, and give it back if you don't answer.`;
+          return;
+        }
+
+        deflect.disabled = false;
+        deflect.textContent = "Think about it";
+        note.hidden = false;
+        note.className = "note note--error";
+        note.textContent =
+          result?.reason === "logged-out"
+            ? "Reconnect Finget from the extension icon to use the vault."
+            : result?.message || "Could not hold that just now.";
+      } catch {
+        deflect.disabled = false;
+        deflect.textContent = "Think about it";
+      }
+    });
 
     const text = document.createElement("div");
     text.className = "text";
     text.append(dot, amount, sep, headline, sep2, risk);
 
-    chip.append(text, deflect);
+    chip.append(text, deflect, note);
 
     // Move the host next to the price rather than leaving it on <body>.
     const host = root.host as HTMLElement;

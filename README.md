@@ -45,7 +45,19 @@ overspend vs last month, projected month-end balance, goal-pace warnings, weeken
 spending spikes, and a group contribution-imbalance check. An LLM pass layers on top
 **when a key is configured** — and the app states plainly when it is not.
 
-### 5. Context-aware AI coach
+### 5. The Deflection Ledger and the 48-hour vault
+Every other money app only counts what you got wrong. Tap **I want this** and the
+amount leaves safe-to-spend *immediately* — the dashboard number moves before you
+have left the page — and Finget asks again in two days. Walk away and it is credited
+to a running total, expressed in goal currency: *"₹12,400 kept — that's the Goa trip,
+funded."* Say nothing for 72 hours and the money is released for you. There is no
+"you caved" figure anywhere in the feature, and the server does not compute one.
+
+Group holds are scope-local, capped at a quarter of group headroom per member so one
+indecisive person cannot freeze everyone's number, and releasable by the creator or a
+group admin.
+
+### 6. Context-aware AI coach
 Streams over SSE with persistent per-scope conversation memory. Its figures come from
 the database, not from the client, so the numbers it quotes are always the real ones.
 
@@ -124,7 +136,7 @@ npm run dev
 npm --prefix finget-backend run dev
 ```
 
-The app is at `http://localhost:5173`, the API at `http://localhost:5000`.
+The app is at `http://localhost:5173`, the API at `http://localhost:5001`.
 
 > **Note:** `finget-backend/.env` is git-ignored. It was previously committed; if you
 > are pulling an old clone, rotate any secret that was in it.
@@ -183,6 +195,10 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `GET/DELETE` | `/api/ai/coach/history` | Per-scope conversation |
 | `GET` | `/api/ai/insights` | Rule + AI insights |
 | `GET` | `/api/health` | Status, including `aiEnabled` |
+| `POST` | `/api/deflections` | **48-hour vault** — ring-fence an amount out of safe-to-spend |
+| `POST` | `/api/deflections/:id/resolve` | Bought, or walked away |
+| `GET` | `/api/deflections/ledger` | Money kept, this month / quarter / all time |
+| `GET` | `/api/deflections/pending` | Holds whose 48 hours are up |
 | `POST/GET/DELETE` | `/api/tokens` | Scoped extension credentials — mint, list, revoke |
 | `POST/GET/DELETE` | `/api/share` | Mint, list and revoke share cards |
 | `GET` | `/s/:token` | **Public** share card page (HTML + Open Graph) |
@@ -196,11 +212,15 @@ serves has passed the redaction serialiser in `services/shareCardService.js`.
 ### Scoped tokens
 
 `POST /api/tokens` mints a `fgt_`-prefixed credential for the browser
-extension. It is **not** the app's JWT: it reaches `POST /api/finance/translate`
-and nothing else, it is stored as a SHA-256 hash so a database dump yields
-nothing usable, and it is revocable from Settings without signing the user out
-anywhere else. Only the app JWT can mint one, so a leaked extension token
-cannot mint itself a replacement.
+extension. It is **not** the app's JWT. Each token carries a set of scopes and
+each scope grants exactly one route — `translate` reaches
+`POST /api/finance/translate`, `deflect` reaches `POST /api/deflections`, and
+nothing reaches anything else. It is stored as a SHA-256 hash so a database
+dump yields nothing usable, and it is revocable from Settings without signing
+the user out anywhere. Only the app JWT can mint one, so a leaked extension
+token cannot mint itself a replacement — and it cannot *decide* a vault hold
+either, so the worst it can do is ring-fence money that releases itself in 72
+hours.
 
 ### Share card images
 

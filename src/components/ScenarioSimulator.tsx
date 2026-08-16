@@ -6,6 +6,7 @@ import { useSimulation } from '../hooks/useFinget';
 import { inr, clamp } from '../lib/format';
 import { Badge, Button, MoneyInput } from './ui';
 import { ShareTranslation } from './ShareTranslation';
+import { VaultButton } from './VaultButton';
 
 /**
  * "Can I buy this?" — types or drags an amount and shows what it costs in
@@ -14,7 +15,9 @@ import { ShareTranslation } from './ShareTranslation';
 export const ScenarioSimulator: React.FC<{
   affordability: Affordability;
   onPreview?: (preview: { safeDaily: number; remaining: number; risk: Affordability['risk'] } | null) => void;
-}> = ({ affordability, onPreview }) => {
+  /** Called after a vault hold lands, so the dashboard can refetch the number. */
+  onHeld?: () => void;
+}> = ({ affordability, onPreview, onHeld }) => {
   const [amount, setAmount] = useState('');
   const numeric = Number(amount) || 0;
   const { result, pending } = useSimulation(numeric);
@@ -172,8 +175,12 @@ export const ScenarioSimulator: React.FC<{
               </p>
             )}
 
-            {/* The headline is the shareable thing, so the share lives with it. */}
-            {result.headline && <ShareTranslation amount={numeric} headline={result.headline} />}
+            {/* The two things you can do with a number you just looked at:
+                walk away from it, or tell someone about it. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <VaultButton amount={numeric} onHeld={onHeld} />
+              {result.headline && <ShareTranslation amount={numeric} headline={result.headline} />}
+            </div>
           </div>
         ) : (
           <div className="h-[150px] rounded-md border border-dashed border-white/70 bg-white/20 flex items-center justify-center">

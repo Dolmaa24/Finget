@@ -79,6 +79,19 @@ function daysInMonthIST(now = new Date()) {
   return Math.round((end - start) / MS_DAY);
 }
 
+/**
+ * First instant of the IST calendar quarter containing `now`.
+ *
+ * Calendar quarters (Jan/Apr/Jul/Oct), not the Indian financial year, which
+ * starts in April. The deflection ledger is a personal running total, not a
+ * tax document, and "this quarter" reading as Jan–Mar in February is what a
+ * person expects.
+ */
+function startOfQuarterIST(now = new Date()) {
+  const { year, month } = istParts(now);
+  return fromISTFields(year, Math.floor(month / 3) * 3, 1);
+}
+
 /** `YYYY-MM` for the IST month — used as a budget period key. */
 function monthKeyIST(now = new Date()) {
   const { year, month } = istParts(now);
@@ -99,6 +112,7 @@ module.exports = {
   startOfMonthIST,
   startOfNextMonthIST,
   startOfDayIST,
+  startOfQuarterIST,
   daysLeftInMonthIST,
   daysInMonthIST,
   monthKeyIST,

@@ -1,4 +1,10 @@
-import type { ChipTranslation, ConnectionState, Message, TranslateResult } from "./lib/messages";
+import type {
+  ChipTranslation,
+  ConnectionState,
+  DeflectResult,
+  Message,
+  TranslateResult,
+} from "./lib/messages";
 
 /**
  * The service worker is the only place the token lives and the only place that
@@ -14,7 +20,7 @@ import type { ChipTranslation, ConnectionState, Message, TranslateResult } from 
  * script has not been since Chrome 85.
  */
 
-const DEFAULT_API = "http://localhost:5000";
+const DEFAULT_API = "http://localhost:5001";
 
 const STORAGE_KEYS = {
   token: "finget_api_token",
@@ -172,6 +178,57 @@ async function translate(amountPaise: number): Promise<TranslateResult> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Vault                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Opens a 48-hour hold from the chip.
+ *
+ * Deliberately NOT cached and NOT de-duplicated by amount: unlike a
+ * translation, this writes, and two different products at the same price are
+ * two different decisions. The chip disables its own button after a success
+ * so a double-click cannot open two holds for one thing.
+ */
+async function deflect(amountPaise: number, label: string, sourceUrl?: string): Promise<DeflectResult> {
+  const { token, apiBaseUrl } = await readStorage();
+  if (!token) return { ok: false, reason: "logged-out" };
+
+  let res: Response;
+  try {
+    res = await fetch(`${apiBaseUrl}/api/deflections`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ amountPaise, label, sourceUrl, context: "user" }),
+    });
+  } catch {
+    return { ok: false, reason: "offline" };
+  }
+
+  if (res.status === 401) {
+    await disconnect();
+    return { ok: false, reason: "logged-out" };
+  }
+  if (res.status === 429) return { ok: false, reason: "rate-limited" };
+
+  if (!res.ok) {
+    // The server's message is worth surfacing here — "that would hold back more
+    // than a quarter of the group's room" is guidance, not a failure.
+    const body = (await res.json().catch(() => ({}))) as { msg?: string };
+    return { ok: false, reason: "error", message: body.msg };
+  }
+
+  try {
+    const data = (await res.json()) as {
+      deflection: { vaultUntil: string };
+      vaultHours: number;
+    };
+    return { ok: true, heldUntil: data.deflection.vaultUntil, vaultHours: data.vaultHours };
+  } catch {
+    return { ok: false, reason: "error" };
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -180,6 +237,9 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
     switch (message.type) {
       case "translate":
         sendResponse(await translate(message.amountPaise));
+        break;
+      case "deflect":
+        sendResponse(await deflect(message.amountPaise, message.label, message.sourceUrl));
         break;
       case "get-state":
         sendResponse(await getState());

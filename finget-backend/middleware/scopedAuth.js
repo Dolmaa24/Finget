@@ -35,7 +35,7 @@ function allowApiToken(requiredScope) {
       }
 
       req.user = String(doc.userId);
-      req.apiToken = { id: String(doc._id), scope: doc.scope, name: doc.name };
+      req.apiToken = { id: String(doc._id), scopes: doc.scopes, name: doc.name };
 
       // Fire-and-forget: a failed bookkeeping write must not fail the request,
       // but it must also not become an unhandled rejection.

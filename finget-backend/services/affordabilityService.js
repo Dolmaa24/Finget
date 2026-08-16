@@ -1,4 +1,5 @@
 const { startOfMonthIST, daysLeftInMonthIST } = require("../utils/time");
+const { fromPaise } = require("../utils/money");
 
 /**
  * Decision-first affordability.
@@ -14,8 +15,15 @@ const { startOfMonthIST, daysLeftInMonthIST } = require("../utils/time");
  * @param {{monthlyIncome?: number}} owner  user, or a group with pooled income
  * @param {object[]} transactions
  * @param {{savingsTarget?: number, emergencyBuffer?: number}} settings
+ * @param {{now?: Date, heldPaise?: number}} [opts]
+ *   `heldPaise` is money ring-fenced by live 48-hour vault holds. It is
+ *   subtracted here, inside the one function every surface calls, rather than
+ *   at any call site — the dashboard, the translator, the simulator and the
+ *   coach must all see the same number or the feature is a lie. Resolved by
+ *   `scopeResolver`, so no caller has to remember to pass it.
  */
-exports.calculateAffordability = (owner, transactions, settings, now = new Date()) => {
+exports.calculateAffordability = (owner, transactions, settings, opts = {}) => {
+  const { now = new Date(), heldPaise = 0 } = opts;
   const monthStart = startOfMonthIST(now);
   const inMonth = transactions.filter((t) => new Date(t.date) >= monthStart);
 
@@ -34,7 +42,15 @@ exports.calculateAffordability = (owner, transactions, settings, now = new Date(
   const savingsTarget = settings?.savingsTarget || 0;
   const emergencyBuffer = settings?.emergencyBuffer || 0;
 
-  const obligations = expenses + savingsTarget;
+  /**
+   * Held money is an obligation, not an expense. It has not been spent and may
+   * never be — it is simply not available to spend on anything else for the
+   * next 48 hours. Keeping it out of `expenses` is what lets the ledger credit
+   * it back without ever having recorded a purchase that did not happen.
+   */
+  const held = fromPaise(heldPaise);
+
+  const obligations = expenses + savingsTarget + held;
   const remaining = income - obligations;
 
   const daysLeft = daysLeftInMonthIST(now);
@@ -54,6 +70,9 @@ exports.calculateAffordability = (owner, transactions, settings, now = new Date(
     expenses,
     savingsTarget,
     emergencyBuffer,
+    /** Surfaced so the UI can say *why* the number is lower than the maths implies. */
+    held,
+    heldPaise,
     daysLeftInMonth: daysLeft,
     monthlyBurnRate: expenses,
   };

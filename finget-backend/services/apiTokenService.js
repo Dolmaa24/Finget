@@ -21,7 +21,7 @@ const hash = (plaintext) => crypto.createHash("sha256").update(plaintext).digest
 /**
  * @returns {{plaintext: string, doc: object}} the only time plaintext exists
  */
-async function mint({ userId, name, scope = "translate", ttlDays = DEFAULT_TTL_DAYS }) {
+async function mint({ userId, name, scopes = ["translate"], ttlDays = DEFAULT_TTL_DAYS }) {
   // 32 bytes: the token is the entire credential, so it gets full entropy
   // rather than the 16 used for guessable-once share links.
   const secret = crypto.randomBytes(32).toString("base64url");
@@ -30,7 +30,9 @@ async function mint({ userId, name, scope = "translate", ttlDays = DEFAULT_TTL_D
   const doc = await ApiToken.create({
     userId,
     name: (name || "Browser extension").slice(0, 60),
-    scope,
+    // Deduped so a caller asking for ["translate","translate"] cannot make the
+    // list in Settings misrepresent what the token actually reaches.
+    scopes: [...new Set(scopes)],
     tokenHash: hash(plaintext),
     prefix: plaintext.slice(0, PREFIX.length + 6),
     expiresAt: new Date(Date.now() + ttlDays * 86400000),
@@ -53,7 +55,7 @@ async function verify(plaintext, requiredScope) {
   if (!doc) return null;
   if (doc.revokedAt) return null;
   if (doc.expiresAt && doc.expiresAt <= new Date()) return null;
-  if (requiredScope && doc.scope !== requiredScope) return null;
+  if (requiredScope && !doc.scopes.includes(requiredScope)) return null;
 
   return doc;
 }
@@ -76,7 +78,7 @@ async function touch(doc) {
 async function listForUser(userId) {
   const docs = await ApiToken.find({ userId, revokedAt: null })
     .sort({ createdAt: -1 })
-    .select("name scope prefix lastUsedAt createdAt expiresAt")
+    .select("name scopes prefix lastUsedAt createdAt expiresAt")
     .lean();
   return docs;
 }

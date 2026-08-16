@@ -1,8 +1,12 @@
 const Settings = require("../models/Settings");
 const Group = require("../models/Group");
 const { isGroupAdmin } = require("../utils/groupAuth");
-const { resolveScope, goalsForScope, handleScopeError } = require("../services/scopeResolver");
-const { calculateAffordability } = require("../services/affordabilityService");
+const {
+  resolveScope,
+  goalsForScope,
+  affordabilityForScope,
+  handleScopeError,
+} = require("../services/scopeResolver");
 const { simulatePurchase } = require("../services/simulationService");
 const { translate } = require("../services/goalCurrencyService");
 const { toPaise } = require("../utils/money");
@@ -17,7 +21,7 @@ exports.getAffordability = async (req, res) => {
       groupId: req.query.groupId,
     });
 
-    const result = calculateAffordability(scope.owner, scope.transactions, scope.settings);
+    const result = affordabilityForScope(scope);
 
     res.json({
       ...result,
@@ -34,7 +38,7 @@ exports.simulate = async (req, res) => {
     const { amount, context, groupId } = req.body;
     const scope = await resolveScope({ userId: req.user, context, groupId });
 
-    const current = calculateAffordability(scope.owner, scope.transactions, scope.settings);
+    const current = affordabilityForScope(scope);
     const goals = await goalsForScope(scope);
 
     res.json(simulatePurchase(current, amount, goals));

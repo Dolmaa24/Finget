@@ -31,7 +31,7 @@ type Preview = { safeDaily: number; remaining: number; risk: RiskLevel } | null;
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
-  const { isFriends, group } = useScope();
+  const { isFriends, group, bumpRevision } = useScope();
   const { data: affordability, loading, error } = useAffordability();
   const { data: transactions } = useTransactions();
   const { data: insightData } = useInsights();
@@ -160,7 +160,11 @@ export const Dashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ScenarioSimulator affordability={affordability} onPreview={handlePreview} />
+              <ScenarioSimulator
+                affordability={affordability}
+                onPreview={handlePreview}
+                onHeld={bumpRevision}
+              />
 
               {/* Recent activity */}
               <div className="glass glass-sheen rounded-lg p-6">

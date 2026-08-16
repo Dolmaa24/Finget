@@ -1,6 +1,7 @@
 import { cn } from '../lib/cn';
 import React from 'react';
-import { ShieldCheck, AlertTriangle, AlertOctagon, Users, CalendarDays } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ShieldCheck, AlertTriangle, AlertOctagon, Users, CalendarDays, Clock } from 'lucide-react';
 import type { Affordability, RiskLevel } from '../api';
 import { inr } from '../lib/format';
 import { Badge, Progress } from './ui';
@@ -138,6 +139,21 @@ export const AffordabilityCard: React.FC<{
             <p className="text-lg font-semibold numeric text-ink">{inr(data.savingsTarget)}</p>
           </div>
         </div>
+
+        {/* A number that dropped for a reason has to say the reason, or it reads
+            as a bug. Only rendered when something is actually on hold. */}
+        {data.held > 0 && (
+          <Link
+            to="/ledger"
+            className="glass-well rounded-md px-4 py-3 mt-4 flex items-center gap-3 lift"
+          >
+            <Clock className="w-4 h-4 text-ink-3 shrink-0" />
+            <p className="text-[12.5px] text-ink-2">
+              <strong className="text-ink numeric">{inr(data.held)}</strong> is held in your
+              48-hour vault, so it isn't counted as safe to spend.
+            </p>
+          </Link>
+        )}
       </div>
     </div>
   );

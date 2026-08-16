@@ -1,7 +1,11 @@
 const AIConversation = require("../models/AIConversation");
 const { getClient, isAiConfigured, MODEL, AI_DISABLED_MESSAGE } = require("../services/aiClient");
-const { resolveScope, goalsForScope, handleScopeError } = require("../services/scopeResolver");
-const { calculateAffordability } = require("../services/affordabilityService");
+const {
+  resolveScope,
+  goalsForScope,
+  affordabilityForScope,
+  handleScopeError,
+} = require("../services/scopeResolver");
 const { orchestrateInsights } = require("../services/insights/insightOrchestrator");
 const { buildCoachContext } = require("../services/coachContextBuilder");
 
@@ -66,11 +70,7 @@ exports.moneyCoach = async (req, res) => {
 
     // Numbers come from the database, not from whatever the client posted, so
     // the coach can no longer be fed a fabricated income by a crafted request.
-    const affordability = calculateAffordability(
-      scope.owner,
-      scope.transactions,
-      scope.settings
-    );
+    const affordability = affordabilityForScope(scope);
 
     const coachData = await buildCoachContext({
       userId: req.user,
@@ -96,7 +96,12 @@ VERIFIED FIGURES (from the database — treat as authoritative):
 - Spent this month: ₹${Math.round(affordability.expenses)}
 - Remaining this month: ₹${Math.round(affordability.remaining)}
 - Safe to spend per day (${affordability.daysLeftInMonth} days left): ₹${Math.round(affordability.safeDaily)}
-- Risk level: ${affordability.risk}
+- Risk level: ${affordability.risk}${
+      affordability.held > 0
+        ? `
+- Held back by 48-hour vault holds (NOT spent, awaiting a decision): ₹${Math.round(affordability.held)}`
+        : ""
+    }
 
 Scope: ${
       scope.isGroup
@@ -113,7 +118,16 @@ Rules:
 - Give 1–3 concrete next steps.
 - Reference goals and category trends when relevant.
 - Stay consistent with prior assistant messages in this thread.
-- Be concise: under 180 words unless asked for detail.`;
+- Be concise: under 180 words unless asked for detail.
+
+On \`deflections\` — things this person considered buying and then did not:
+- Credit them. "You walked away from ₹8,499 of headphones — that is two days of
+  Goa you kept" is the tone. Name the specific thing when you have it.
+- Never frame a deflection as deprivation, and never suggest they are now
+  "owed" a purchase for having resisted one.
+- Money on hold is NOT available. Do not offer it as spare room to spend.
+- Say nothing at all about purchases they went ahead with after considering
+  them. That is not a failure and it is not yours to mention.`;
 
     const history = conversation.messages
       .slice(-12)
@@ -169,11 +183,7 @@ exports.getInsights = async (req, res) => {
       groupId: req.query.groupId,
     });
 
-    const currentAffordability = calculateAffordability(
-      scope.owner,
-      scope.transactions,
-      scope.settings
-    );
+    const currentAffordability = affordabilityForScope(scope);
     const goals = await goalsForScope(scope);
 
     const insightsData = await orchestrateInsights(

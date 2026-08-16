@@ -1,4 +1,6 @@
 const Goal = require("../models/Goal");
+const Deflection = require("../models/Deflection");
+const { fromPaise, sumPaise } = require("../utils/money");
 const { MS_DAY, startOfMonthIST, istParts, fromISTFields } = require("../utils/time");
 
 function summarizeByCategory(transactions, since) {
@@ -79,6 +81,29 @@ async function buildCoachContext({ userId, groupId, transactions }) {
       date: t.date,
     }));
 
+  /**
+   * What this person walked away from.
+   *
+   * The coach is the one surface that can say "you didn't buy the headphones,
+   * and that is why Goa moved closer" — and it can only say it if it knows.
+   * Deliberately excludes anything they *did* buy after considering it: the
+   * coach has the transaction ledger for spending, and giving it a list of
+   * "things you caved on" would turn the calmest surface in the app into the
+   * one that keeps score.
+   */
+  const scopeFilter = groupId ? { groupId } : { userId, groupId: { $exists: false } };
+
+  const [deflected, holds] = await Promise.all([
+    Deflection.find({ ...scopeFilter, state: "deflected", decidedAt: { $gte: thirtyDaysAgo } })
+      .select("label amountPaise decidedAt translationSnapshot")
+      .sort({ decidedAt: -1 })
+      .limit(10)
+      .lean(),
+    Deflection.find({ ...scopeFilter, state: "considering" })
+      .select("label amountPaise vaultUntil")
+      .lean(),
+  ]);
+
   return {
     period: {
       label: "last_30_days_expenses",
@@ -89,6 +114,19 @@ async function buildCoachContext({ userId, groupId, transactions }) {
     categoryTotalsThisMonth: topCategories,
     goals: goalsSummary,
     recentTransactionsSample: last10,
+    deflections: {
+      last30DaysTotal: fromPaise(sumPaise(deflected.map((d) => d.amountPaise))),
+      count: deflected.length,
+      examples: deflected.slice(0, 5).map((d) => ({
+        label: d.label,
+        amount: fromPaise(d.amountPaise),
+        wasWorth: d.translationSnapshot?.headline,
+      })),
+      // Currently held back, awaiting a decision — money the coach should treat
+      // as unavailable rather than as spare.
+      currentlyOnHold: fromPaise(sumPaise(holds.map((d) => d.amountPaise))),
+      holdCount: holds.length,
+    },
   };
 }
 

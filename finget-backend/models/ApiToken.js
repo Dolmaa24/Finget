@@ -22,10 +22,26 @@ const apiTokenSchema = new mongoose.Schema({
   name: { type: String, default: "Browser extension", maxlength: 60 },
 
   /**
-   * Capability, not a role. Every new scope is a deliberate decision, so the
-   * enum stays short and adding to it means reviewing what it unlocks.
+   * Capabilities, not a role. A SET rather than one string because a single
+   * client legitimately needs more than one narrow permission — the extension
+   * both prices a product and vaults it — and issuing it two credentials to
+   * hold in the same storage would add connect-flow complexity for no security
+   * gain. Each entry still grants exactly one route.
+   *
+   *   translate — POST /api/finance/translate. Reads nothing, stores nothing.
+   *   deflect   — POST /api/deflections. Opens a 48-hour hold. Cannot resolve
+   *               one and cannot read the ledger; the worst a stolen token
+   *               does is ring-fence money that releases itself in 72 hours.
+   *
+   * Adding to this enum means reviewing what the new entry unlocks.
    */
-  scope: { type: String, required: true, enum: ["translate"], default: "translate" },
+  scopes: {
+    type: [String],
+    required: true,
+    enum: ["translate", "deflect"],
+    default: ["translate"],
+    validate: [(v) => Array.isArray(v) && v.length > 0, "a token needs at least one scope"],
+  },
 
   tokenHash: { type: String, required: true, unique: true, index: true },
 
