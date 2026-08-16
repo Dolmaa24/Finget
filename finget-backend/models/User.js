@@ -16,6 +16,18 @@ const userSchema = new mongoose.Schema(
       plan: { type: String, enum: ["free", "plus"], default: "free" },
       planUntil: Date,
     },
+
+    /**
+     * Merchant → category, learned from this person's own import corrections.
+     * A Map rather than a subdocument because the keys are arbitrary merchant
+     * names; see `services/categoryLearner.js`. No ML, and deliberately
+     * legible enough that it could be shown to the person as a plain list.
+     */
+    merchantCategories: {
+      type: Map,
+      of: String,
+      default: () => new Map(),
+    },
   },
   { timestamps: true }
 );

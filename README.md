@@ -78,7 +78,25 @@ and first initials — deliberately **not the total**, because that is the figur
 make a forwarded link worth having. Resetting the link kills every copy already sent and
 removes nobody from the group.
 
-### 7. Context-aware AI coach
+### 7. Import: stop typing transactions in
+Manual entry is the biggest reason people abandon this category. Paste a batch of bank
+or UPI SMS and Finget reads them with **per-issuer regex — no API key, no network call,
+nothing leaves the server**. Bank SMS is among the most sensitive text a person owns, so
+the ordinary import path is deterministic and local. OTPs and balance alerts are ignored.
+
+Payment screenshots go through a **pluggable vision provider**, enabled by config alone
+(`VISION_API_KEY`, optionally `VISION_PROVIDER` / `VISION_MODEL` / `VISION_BASE_URL`).
+With none configured the feature says so plainly and points at the SMS path, which is
+what most imports use anyway.
+
+Everything lands in a **review sheet** — nothing is ever written without a person
+confirming it. Suspected duplicates arrive unticked with the row they matched named
+next to them, matched on the bank reference where one exists and otherwise on amount,
+date ±1 day, and fuzzy merchant. Categories are suggested from the person's own past
+corrections first (a plain merchant→category map, no ML), then a small seed list. **No
+image is ever stored** — read once, discarded, and the UI says so.
+
+### 8. Context-aware AI coach
 Streams over SSE with persistent per-scope conversation memory. Its figures come from
 the database, not from the client, so the numbers it quotes are always the real ones.
 
@@ -216,6 +234,10 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `GET/DELETE` | `/api/ai/coach/history` | Per-scope conversation |
 | `GET` | `/api/ai/insights` | Rule + AI insights |
 | `GET` | `/api/health` | Status, including `aiEnabled` |
+| `GET` | `/api/receipts/status` | What this server can import — SMS always, screenshots if configured |
+| `POST` | `/api/receipts/parse-sms` | **Bulk paste** → reviewable drafts, deterministic and offline |
+| `POST` | `/api/receipts/parse` | Screenshot → draft, via the pluggable vision provider |
+| `POST` | `/api/receipts/commit` | Write the rows the person confirmed |
 | `GET` | `/api/groups/:id/trip-status` | **Live trip burn** — day, pace, allowance, projection |
 | `GET` | `/api/groups/:id/wrapped` | Trip recap, with an optional AI one-liner |
 | `POST` | `/api/groups/:id/wrapped/share` | Mint *your own* personalised Wrapped card |

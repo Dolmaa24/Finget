@@ -51,7 +51,14 @@ function createApp() {
   app.use("/api/ai", require("./routes/aiRoutes"));
   app.use("/api/goals", require("./routes/goalRoutes"));
   app.use("/api/groups", require("./routes/groupRoutes"));
-  app.use("/api/receipts", require("./routes/receiptRoutes"));
+  /**
+   * Import carries base64 screenshots, which the 1 MB global cap above would
+   * reject with an opaque Express error before the controller could return its
+   * own friendly one. Raised HERE ONLY — a 9 MB body limit on every route
+   * would be an abuse surface on endpoints that need a few hundred bytes.
+   * The controller still enforces the real 6 MB image cap.
+   */
+  app.use("/api/receipts", express.json({ limit: "9mb" }), require("./routes/receiptRoutes"));
   app.use("/api/tokens", require("./routes/apiTokenRoutes"));
   app.use("/api/deflections", require("./routes/deflectionRoutes"));
   app.use("/api/share", require("./routes/shareCardRoutes"));
@@ -81,6 +88,21 @@ function createApp() {
 
   // Four args are required for Express to treat this as an error handler.
   app.use((err, req, res, next) => {
+    /**
+     * A body over the parser's limit is the caller's problem, not a server
+     * fault. Express raises it before any route runs, so without this it
+     * surfaced as a 500 "Something went wrong" — which reads as broken rather
+     * than as "that file is too big", and buries real faults in the logs.
+     */
+    if (err.type === "entity.too.large" || err.status === 413) {
+      return res.status(413).json({ msg: "That upload is too large. Try a smaller image." });
+    }
+
+    /** Malformed JSON is likewise a client error. */
+    if (err.type === "entity.parse.failed" || (err.status === 400 && err.body !== undefined)) {
+      return res.status(400).json({ msg: "That request body could not be read as JSON." });
+    }
+
     console.error("Unhandled error:", err.message);
     res.status(500).json({ error: "Something went wrong" });
   });

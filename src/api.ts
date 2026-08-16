@@ -269,6 +269,74 @@ export const tokenApi = {
   revoke: (id: string) => api<{ msg: string }>(`/tokens/${id}`, { method: 'DELETE' }),
 };
 
+/* -------------------------- import ---------------------------- */
+
+export interface ImportStatus {
+  /** Always true — the SMS path needs no key and no provider. */
+  smsEnabled: boolean;
+  screenshotEnabled: boolean;
+  visionProvider: string;
+  message: string | null;
+  maxImageBytes: number;
+  maxSmsChars: number;
+  /** The trust claim, served by the API so the UI states it rather than implies it. */
+  imagesStored: false;
+}
+
+/** A parsed row awaiting review. Nothing is written until the person confirms. */
+export interface ImportRow {
+  amountPaise: number;
+  amount: number;
+  type: 'expense' | 'income';
+  /** False when the direction was assumed rather than read. */
+  directionDetected: boolean;
+  date: string | null;
+  merchant: string | null;
+  issuerLabel: string | null;
+  reference: string | null;
+  confidence: number;
+  source: 'sms' | 'screenshot';
+  raw: string | null;
+  category: string | null;
+  categorySource: 'learned' | 'seed' | null;
+  /** Fields to highlight rather than present as fact. */
+  needsAttention: string[];
+  duplicateOf: {
+    transactionId: string | null;
+    reason: string;
+    confidence: number;
+    amount: number;
+    date: string;
+    label: string | null;
+  } | null;
+  /** Pre-ticked, except for suspected duplicates. */
+  include: boolean;
+}
+
+export const importApi = {
+  status: () => api<ImportStatus>('/receipts/status'),
+
+  /** Deterministic, offline, and needs no key. The primary import path. */
+  parseSms: (scope: ScopeRef, text: string) =>
+    api<{ rows: ImportRow[]; source: 'sms'; unrecognised: string[]; truncated: boolean }>(
+      '/receipts/parse-sms',
+      { method: 'POST', body: JSON.stringify({ text, ...scopeBody(scope) }) }
+    ),
+
+  /** The image is sent, read, and discarded — never stored server-side. */
+  parseScreenshot: (scope: ScopeRef, dataUrl: string) =>
+    api<{ rows: ImportRow[]; source: 'screenshot'; imageDiscarded: boolean }>('/receipts/parse', {
+      method: 'POST',
+      body: JSON.stringify({ image: dataUrl, ...scopeBody(scope) }),
+    }),
+
+  commit: (scope: ScopeRef, rows: Partial<ImportRow>[]) =>
+    api<{ imported: number; skipped: { index: number; reason: string }[]; learnedCategories: number }>(
+      '/receipts/commit',
+      { method: 'POST', body: JSON.stringify({ rows, ...scopeBody(scope) }) }
+    ),
+};
+
 /* ------------------------ deflections ------------------------- */
 
 export type DeflectionState = 'considering' | 'deflected' | 'bought';

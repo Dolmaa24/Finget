@@ -12,6 +12,7 @@ import { FutureImpactPage } from './pages/FutureImpactPage';
 import { ExtensionConnectPage } from './pages/ExtensionConnectPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { WrappedPage } from './pages/WrappedPage';
+import { ImportPage } from './pages/ImportPage';
 import { JoinTripPage } from './pages/JoinTripPage';
 import { AppShell } from './components/AppShell';
 import { AuthProvider } from './context/AuthContext';
@@ -36,6 +37,7 @@ function AppRoutes() {
         <Route path="/split" element={<SplitPage />} />
         <Route path="/future-impact" element={<FutureImpactPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
+        <Route path="/import" element={<ImportPage />} />
         <Route path="/wrapped" element={<WrappedPage />} />
         <Route path="/insights" element={<InsightsPage />} />
         <Route path="/coach" element={<AiCoachPage />} />

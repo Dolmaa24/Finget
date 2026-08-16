@@ -80,6 +80,18 @@ const translateLimiter = rateLimit({
 });
 
 /**
+ * Import. Looser than the AI limiter because SMS parsing costs nothing but
+ * CPU and a person genuinely might paste several months in a sitting — but
+ * still capped, since each call scans recent transactions for duplicates.
+ */
+const importLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60 * 1000,
+  limit: 120,
+  keyGenerator: byUser,
+});
+
+/**
  * Minting API tokens. Deliberately tight: a legitimate user connects the
  * extension once, maybe twice. A burst means either a loop in the connect page
  * or someone with a stolen JWT stocking up on credentials that survive a
@@ -96,6 +108,7 @@ module.exports = {
   shareCreateLimiter,
   sharePublicLimiter,
   inviteCodeLimiter,
+  importLimiter,
   aiLimiter,
   translateLimiter,
   tokenMintLimiter,

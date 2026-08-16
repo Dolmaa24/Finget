@@ -10,6 +10,7 @@ import {
   Lightbulb,
   PiggyBank,
   Trophy,
+  Upload,
   Users,
   Settings,
   LogOut,
@@ -35,6 +36,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-[19px] h-[19px]" />, modes: 'both' },
   { to: '/transactions', label: 'Activity', icon: <Receipt className="w-[19px] h-[19px]" />, modes: 'both' },
+  { to: '/import', label: 'Import', icon: <Upload className="w-[19px] h-[19px]" />, modes: 'both' },
   { to: '/goals', label: 'Goals', icon: <Target className="w-[19px] h-[19px]" />, modes: 'both' },
   { to: '/split', label: 'Split & settle', icon: <Users className="w-[19px] h-[19px]" />, modes: 'group' },
   { to: '/wrapped', label: 'Wrapped', icon: <Trophy className="w-[19px] h-[19px]" />, modes: 'group' },
