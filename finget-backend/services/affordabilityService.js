@@ -1,16 +1,4 @@
-const MS_DAY = 86400000;
-
-function startOfMonth(d) {
-  const x = new Date(d);
-  x.setDate(1);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function daysLeftInMonth(now = new Date()) {
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return Math.max(1, Math.ceil((end - now) / MS_DAY));
-}
+const { startOfMonthIST, daysLeftInMonthIST } = require("../utils/time");
 
 /**
  * Decision-first affordability.
@@ -19,12 +7,16 @@ function daysLeftInMonth(now = new Date()) {
  * every transaction ever recorded was subtracted from a single month's income,
  * so the number drifted further from reality the longer an account was used.
  *
+ * Month and day boundaries are Asia/Kolkata (see utils/time.js), not
+ * server-local. On a UTC host the old local-time version rolled the month over
+ * at 05:30 IST, which made the number jump mid-morning on the 1st.
+ *
  * @param {{monthlyIncome?: number}} owner  user, or a group with pooled income
  * @param {object[]} transactions
  * @param {{savingsTarget?: number, emergencyBuffer?: number}} settings
  */
 exports.calculateAffordability = (owner, transactions, settings, now = new Date()) => {
-  const monthStart = startOfMonth(now);
+  const monthStart = startOfMonthIST(now);
   const inMonth = transactions.filter((t) => new Date(t.date) >= monthStart);
 
   const expenses = inMonth
@@ -45,7 +37,7 @@ exports.calculateAffordability = (owner, transactions, settings, now = new Date(
   const obligations = expenses + savingsTarget;
   const remaining = income - obligations;
 
-  const daysLeft = daysLeftInMonth(now);
+  const daysLeft = daysLeftInMonthIST(now);
   const safeDaily = remaining > 0 ? remaining / daysLeft : 0;
 
   let risk = "Safe";
@@ -66,6 +58,3 @@ exports.calculateAffordability = (owner, transactions, settings, now = new Date(
     monthlyBurnRate: expenses,
   };
 };
-
-exports.daysLeftInMonth = daysLeftInMonth;
-exports.startOfMonth = startOfMonth;

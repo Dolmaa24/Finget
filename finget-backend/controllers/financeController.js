@@ -4,6 +4,8 @@ const { isGroupAdmin } = require("../utils/groupAuth");
 const { resolveScope, goalsForScope, handleScopeError } = require("../services/scopeResolver");
 const { calculateAffordability } = require("../services/affordabilityService");
 const { simulatePurchase } = require("../services/simulationService");
+const { translate } = require("../services/goalCurrencyService");
+const { toPaise } = require("../utils/money");
 const { generateAutoBudget } = require("../services/budgetService");
 const { simulateHabitChange } = require("../services/futureImpactService");
 
@@ -36,6 +38,43 @@ exports.simulate = async (req, res) => {
     const goals = await goalsForScope(scope);
 
     res.json(simulatePurchase(current, amount, goals));
+  } catch (err) {
+    handleScopeError(err, res);
+  }
+};
+
+/**
+ * Goal currency: what does this purchase actually cost, in the terms this
+ * person cares about? Takes integer paise explicitly — `/simulate` is the
+ * rupee-denominated legacy mouth on the same maths.
+ */
+exports.translatePrice = async (req, res) => {
+  try {
+    const { amountPaise, amount, context, groupId } = req.body;
+
+    // Accept rupees as a convenience, but paise is the contract.
+    let paise;
+    if (amountPaise !== undefined) {
+      if (!Number.isInteger(amountPaise)) {
+        return res.status(400).json({ msg: "amountPaise must be an integer number of paise" });
+      }
+      paise = amountPaise;
+    } else if (amount !== undefined) {
+      const rupees = Number(amount);
+      if (!Number.isFinite(rupees)) {
+        return res.status(400).json({ msg: "amount must be a number" });
+      }
+      paise = toPaise(rupees);
+    } else {
+      return res.status(400).json({ msg: "amountPaise is required" });
+    }
+
+    if (paise <= 0) {
+      return res.status(400).json({ msg: "amountPaise must be greater than zero" });
+    }
+
+    const scope = await resolveScope({ userId: req.user, context, groupId });
+    res.json(await translate(scope, paise));
   } catch (err) {
     handleScopeError(err, res);
   }

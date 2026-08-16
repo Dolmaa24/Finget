@@ -13,6 +13,19 @@ const groupSchema = new mongoose.Schema({
   /** Shared-wallet equivalents of the personal Settings doc. */
   savingsTarget: { type: Number, default: 0 },
   emergencyBuffer: { type: Number, default: 0 },
+
+  /**
+   * A Trip Pass belongs to the group, not to whoever paid — one purchase has
+   * to upgrade every member, including people who join afterwards.
+   * `until` is set to the trip's endDate + 30 days so the Wrapped card, which
+   * generates *after* the trip, is still inside the window people paid for.
+   */
+  entitlement: {
+    tripPass: { type: Boolean, default: false },
+    grantedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    until: Date,
+  },
+
   createdAt: { type: Date, default: Date.now },
 });
 

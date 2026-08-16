@@ -1,4 +1,4 @@
-const MS_DAY = 86400000;
+const { MS_DAY, istParts, fromISTFields, isWeekendIST } = require("../../utils/time");
 
 function toObject(t) {
   return t.toObject ? t.toObject() : t;
@@ -86,15 +86,17 @@ exports.calculateHealthScore = (monthlyIncome, remaining) => {
   return {
     score,
     label,
-    hint: `You are keeping ${Math.round(savingsRatio * 100)}% of income this month.`,
+    hint: `You are keeping ${Math.round(savingsRatio * 100)}% of income this month.`, // not-money: percentage
   };
 };
 
 exports.categoryOverspendVsLastMonth = (transactions) => {
   const txs = transactions.map(toObject);
   const now = new Date();
-  const thisStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const { year, month } = istParts(now);
+  const thisStart = fromISTFields(year, month, 1);
+  const lastStart = fromISTFields(year, month - 1, 1);
+  const nextStart = fromISTFields(year, month + 1, 1);
 
   const sumBy = (start, end) => {
     const m = {};
@@ -108,7 +110,7 @@ exports.categoryOverspendVsLastMonth = (transactions) => {
     return m;
   };
 
-  const thisMonth = sumBy(thisStart, new Date(now.getFullYear(), now.getMonth() + 1, 1));
+  const thisMonth = sumBy(thisStart, nextStart);
   const lastMonth = sumBy(lastStart, thisStart);
 
   let worst = null;
@@ -116,7 +118,7 @@ exports.categoryOverspendVsLastMonth = (transactions) => {
   for (const cat of Object.keys(thisMonth)) {
     const prev = lastMonth[cat] || 0;
     if (prev <= 0) continue;
-    const pct = ((thisMonth[cat] - prev) / prev) * 100;
+    const pct = ((thisMonth[cat] - prev) / prev) * 100; // not-money: percentage
     if (pct > worstPct && pct >= 15) {
       worstPct = pct;
       worst = { cat, thisAmt: thisMonth[cat], prevAmt: prev, pct };
@@ -232,8 +234,7 @@ exports.weekendSpendPattern = (transactions) => {
   let weekend = 0;
   let weekday = 0;
   recent.forEach((t) => {
-    const day = new Date(t.date).getDay();
-    if (day === 0 || day === 6) weekend += t.amount;
+    if (isWeekendIST(new Date(t.date))) weekend += t.amount;
     else weekday += t.amount;
   });
 
@@ -279,9 +280,9 @@ exports.groupContributionBalance = (transactions, memberCount) => {
   return {
     title: "One member is fronting most costs",
     description: `The top payer has covered ${Math.round(
-      topShare * 100
+      topShare * 100 // not-money: percentage
     )}% of ${inr(total)} in shared spend, against an even share of ${Math.round(
-      fairShare * 100
+      fairShare * 100 // not-money: percentage
     )}%.`,
     actionable_tip: "Run a settle-up, or rotate who pays so the load evens out.",
     source: "rule",

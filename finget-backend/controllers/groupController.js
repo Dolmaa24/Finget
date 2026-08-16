@@ -3,7 +3,8 @@ const Transaction = require("../models/Transaction");
 const Settlement = require("../models/Settlement");
 const Goal = require("../models/Goal");
 const { isGroupMember, isGroupAdmin, idOf } = require("../utils/groupAuth");
-const { computeBalances, suggestSettlements, round2 } = require("../services/splitService");
+const { computeBalancesPaise, suggestSettlementsPaise } = require("../services/splitService");
+const { toPaise, fromPaise } = require("../utils/money");
 
 /** Shared shape for every group payload the client receives. */
 function serializeGroup(group, userId) {
@@ -154,14 +155,15 @@ exports.leaveGroup = async (req, res) => {
       Transaction.find({ groupId: group._id }).lean(),
       Settlement.find({ groupId: group._id }).lean(),
     ]);
-    const balances = computeBalances(transactions, settlements);
-    const mine = balances.get(idOf(req.user)) || 0;
-    if (Math.abs(mine) > 1) {
+    const balancesPaise = computeBalancesPaise(transactions, settlements);
+    const minePaise = balancesPaise.get(idOf(req.user)) || 0;
+    // Tolerate up to a rupee of legacy float dust from pre-paise rows.
+    if (Math.abs(minePaise) > 100) {
       return res.status(400).json({
         msg:
-          mine < 0
-            ? `Settle up first — you still owe ₹${Math.abs(round2(mine))} to the group.`
-            : `Settle up first — the group still owes you ₹${round2(mine)}.`,
+          minePaise < 0
+            ? `Settle up first — you still owe ₹${fromPaise(Math.abs(minePaise))} to the group.`
+            : `Settle up first — the group still owes you ₹${fromPaise(minePaise)}.`,
       });
     }
 
@@ -203,7 +205,8 @@ exports.getBalances = async (req, res) => {
       Settlement.find({ groupId: group._id }).lean(),
     ]);
 
-    const balances = computeBalances(transactions, settlements);
+    // Compute in paise; convert to rupees only in the response below.
+    const balancesPaise = computeBalancesPaise(transactions, settlements);
     const byId = new Map(group.members.map((m) => [idOf(m), m]));
     const nameFor = (id) => byId.get(id)?.name || "Member";
 
@@ -212,32 +215,34 @@ exports.getBalances = async (req, res) => {
       return {
         userId: id,
         name: m.name || "Member",
-        balance: round2(balances.get(id) || 0),
+        balance: fromPaise(balancesPaise.get(id) || 0),
       };
     });
 
-    const transfers = suggestSettlements(balances).map((t) => ({
-      ...t,
+    const transfers = suggestSettlementsPaise(balancesPaise).map((t) => ({
+      from: t.from,
+      to: t.to,
+      amount: fromPaise(t.amountPaise),
       fromName: nameFor(t.from),
       toName: nameFor(t.to),
     }));
 
-    const totalGroupSpend = transactions
+    const totalGroupSpendPaise = transactions
       .filter((t) => t.type === "expense")
-      .reduce((s, t) => s + (t.amount || 0), 0);
+      .reduce((s, t) => s + toPaise(t.amount || 0), 0);
 
     const paidByMember = group.members.map((m) => {
       const id = idOf(m);
-      const paid = transactions
+      const paidPaise = transactions
         .filter((t) => t.type === "expense" && idOf(t.paidBy || t.userId) === id)
-        .reduce((s, t) => s + (t.amount || 0), 0);
-      return { userId: id, name: m.name || "Member", paid: round2(paid) };
+        .reduce((s, t) => s + toPaise(t.amount || 0), 0);
+      return { userId: id, name: m.name || "Member", paid: fromPaise(paidPaise) };
     });
 
     res.json({
       balances: memberBalances,
       transfers,
-      totalGroupSpend: round2(totalGroupSpend),
+      totalGroupSpend: fromPaise(totalGroupSpendPaise),
       paidByMember,
       settlements: settlements.map((s) => ({
         _id: s._id,

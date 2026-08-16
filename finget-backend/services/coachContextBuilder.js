@@ -1,13 +1,5 @@
 const Goal = require("../models/Goal");
-
-const MS_DAY = 86400000;
-
-function startOfMonth(d) {
-  const x = new Date(d);
-  x.setDate(1);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
+const { MS_DAY, startOfMonthIST, istParts, fromISTFields } = require("../utils/time");
 
 function summarizeByCategory(transactions, since) {
   const map = {};
@@ -37,13 +29,14 @@ async function buildCoachContext({ userId, groupId, transactions }) {
   const recent = tx.filter((t) => new Date(t.date) >= thirtyDaysAgo);
   const thisWeek = tx.filter((t) => new Date(t.date) >= sevenDaysAgo);
 
-  const monthlyByCat = summarizeByCategory(tx, startOfMonth(now));
+  const monthlyByCat = summarizeByCategory(tx, startOfMonthIST(now));
   const weeklyExpenses = thisWeek
     .filter((t) => t.type === "expense")
     .reduce((s, t) => s + t.amount, 0);
 
-  const prevMonthStart = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 15));
-  const prevMonthEnd = startOfMonth(now);
+  const { year, month } = istParts(now);
+  const prevMonthStart = fromISTFields(year, month - 1, 1);
+  const prevMonthEnd = startOfMonthIST(now);
   const prevMonthExpenses = tx
     .filter(
       (t) =>
@@ -66,7 +59,7 @@ async function buildCoachContext({ userId, groupId, transactions }) {
     priority: g.priority,
     pct:
       g.targetAmount > 0
-        ? Math.round(((g.currentAmount || 0) / g.targetAmount) * 100)
+        ? Math.round(((g.currentAmount || 0) / g.targetAmount) * 100) // not-money: percentage
         : 0,
   }));
 

@@ -1,9 +1,11 @@
 const router = require("express").Router();
 const auth = require("../middleware/authMiddleware");
+const { translateLimiter } = require("../middleware/rateLimit");
 
 const {
   getAffordability,
   simulate,
+  translatePrice,
   getAutoBudget,
   saveActiveBudget,
   futureImpactHabit,
@@ -12,6 +14,8 @@ const {
 } = require("../controllers/financeController");
 
 router.get("/affordability", auth, getAffordability);
+router.post("/translate", auth, translateLimiter, translatePrice);
+/** @deprecated Rupee-denominated wrapper over /translate. */
 router.post("/simulate", auth, simulate);
 router.get("/auto-budget", auth, getAutoBudget);
 router.put("/active-budget", auth, saveActiveBudget);

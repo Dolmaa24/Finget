@@ -77,6 +77,20 @@ is the single place that turns that pair into *(owner, transactions, settings, g
 and enforces membership. Controllers never re-implement the check — which is what
 allowed an authorization bug to hide in four of them before.
 
+**Money** is integer paise in every calculation. The database still stores
+rupees, so [`utils/money.js`](finget-backend/utils/money.js) owns the only two
+conversion points and a test enforces that nothing else multiplies or divides
+by 100.
+
+**Dates** are Asia/Kolkata everywhere, via
+[`utils/time.js`](finget-backend/utils/time.js). Server-local boundaries used to
+roll the month over at 05:30 IST on a UTC host — invisible on an Indian dev
+machine, wrong in production.
+
+**Goal currency** — [`services/goalCurrencyService.js`](finget-backend/services/goalCurrencyService.js)
+is the product in one function: it turns ₹8,499 into *"6 days of your Goa trip"*,
+and names the frame it chose in `headlineKind` so nothing downstream has to guess.
+
 ---
 
 ## 🚦 Getting started
@@ -124,7 +138,8 @@ The app is at `http://localhost:5173`, the API at `http://localhost:5000`.
 | `POST` | `/api/auth/signup` · `/login` | Returns `{ token, user }` |
 | `GET/PUT` | `/api/auth/me` | Profile and monthly income |
 | `GET` | `/api/finance/affordability` | Safe-to-spend for the scope |
-| `POST` | `/api/finance/simulate` | Goal-aware purchase what-if |
+| `POST` | `/api/finance/translate` | **Goal currency** — what a price costs in days of your goal |
+| `POST` | `/api/finance/simulate` | _Deprecated._ Rupee-denominated wrapper over `/translate` |
 | `POST` | `/api/finance/future-impact` | Habit-change projection |
 | `GET/PUT` | `/api/finance/budget-settings` | Savings target + emergency buffer |
 | `GET` | `/api/finance/auto-budget` | Category split from recent spend |
@@ -144,5 +159,33 @@ The app is at `http://localhost:5173`, the API at `http://localhost:5000`.
 | `GET/DELETE` | `/api/ai/coach/history` | Per-scope conversation |
 | `GET` | `/api/ai/insights` | Rule + AI insights |
 | `GET` | `/api/health` | Status, including `aiEnabled` |
+| `GET` | `/s/:token` | **Public** share card page (HTML + Open Graph) |
+| `GET` | `/s/:token.png` | Share card image — `501` until Milestone 1 |
 
-All routes except signup, login and health require `Authorization: Bearer <token>`.
+All `/api` routes except signup, login and health require
+`Authorization: Bearer <token>`. `/s/:token` is deliberately public — it is the
+only route that returns user data without authentication, and everything it
+serves has passed the redaction serialiser in `services/shareCardService.js`.
+
+---
+
+## 🧪 Tests
+
+```bash
+npm test
+```
+
+```bash
+npm --prefix finget-backend test
+```
+
+Every money calculation and every authorization boundary is covered: paise
+conversion and remainder distribution, IST month boundaries, goal translation,
+split reconciliation, scope isolation, and share-payload redaction.
+
+`tests/no-bare-hundreds.test.js` scans the backend for a stray `* 100` or
+`/ 100` outside `utils/money.js` and fails the build if it finds one — that is
+the entire rupee/paise bug class, caught at the only moment it is cheap.
+
+Set `MONGO_TEST_URI` to run integration tests against a real Mongo instead of
+downloading `mongodb-memory-server`'s binary.

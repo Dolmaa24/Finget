@@ -1,96 +1,126 @@
 const { idOf } = require("../utils/groupAuth");
-
-/** Round to paise so repeated float math never drifts into ₹0.0000001 debts. */
-const round2 = (n) => Math.round(n * 100) / 100;
+const { toPaise, fromPaise, splitPaise, allocatePaise } = require("../utils/money");
 
 /**
- * Split `amount` across `memberIds` as evenly as possible, pushing the
- * remainder (in paise) onto the leading members so the parts always sum
- * back to exactly `amount`.
+ * Split and settle-up maths.
+ *
+ * Everything here computes in integer paise. Balances used to be floating
+ * rupees guarded by a `round2` helper and `> 0.01` epsilon comparisons; those
+ * are gone deliberately. In paise the comparisons are exact, so a debt is
+ * settled when it is `0`, not when it is "close enough to zero".
+ *
+ * Transactions still *store* rupees, so `toPaise`/`fromPaise` are applied at
+ * the boundary of this module and nowhere inside it.
  */
-function equalSplit(amount, memberIds) {
-  const n = memberIds.length;
-  if (n === 0) return [];
-  const totalPaise = Math.round(amount * 100);
-  const base = Math.floor(totalPaise / n);
-  let remainder = totalPaise - base * n;
 
-  return memberIds.map((userId) => {
-    const extra = remainder > 0 ? 1 : 0;
-    if (remainder > 0) remainder -= 1;
-    return { userId, amount: (base + extra) / 100, status: "pending" };
-  });
+/**
+ * Split `amountRupees` evenly across `memberIds`.
+ * Returns split rows in rupees, ready to store on a Transaction.
+ */
+function equalSplit(amountRupees, memberIds) {
+  if (memberIds.length === 0) return [];
+  const shares = splitPaise(toPaise(amountRupees), memberIds.length);
+  return memberIds.map((userId, i) => ({
+    userId,
+    amount: fromPaise(shares[i]),
+    status: "pending",
+  }));
 }
 
 /**
- * Net position per member across a group's expenses and settlements.
- *
- * Positive balance = the group owes them (they fronted more than their share).
- * Negative balance = they owe the group.
+ * Split `amountRupees` across members in proportion to `weights`
+ * (Milestone 5 — income-weighted splits). Parts sum to exactly the total.
  */
-function computeBalances(transactions, settlements = []) {
-  const net = new Map();
-  const bump = (id, delta) => {
+function weightedSplit(amountRupees, memberIds, weights) {
+  if (memberIds.length === 0) return [];
+  const shares = allocatePaise(toPaise(amountRupees), weights);
+  return memberIds.map((userId, i) => ({
+    userId,
+    amount: fromPaise(shares[i]),
+    status: "pending",
+  }));
+}
+
+/**
+ * Net position per member, in paise.
+ *
+ * Positive = the group owes them (they fronted more than their share).
+ * Negative = they owe the group.
+ *
+ * @returns {Map<string, number>} userId → paise
+ */
+function computeBalancesPaise(transactions, settlements = []) {
+  const netPaise = new Map();
+  const bump = (id, deltaPaise) => {
     if (!id) return;
     const key = idOf(id);
-    net.set(key, round2((net.get(key) || 0) + delta));
+    netPaise.set(key, (netPaise.get(key) || 0) + deltaPaise);
   };
 
   transactions.forEach((t) => {
     if (t.type !== "expense") return;
     const splits = Array.isArray(t.splits) ? t.splits : [];
-    if (splits.length === 0) return; // unsplit group spend affects no one's debt
+    if (splits.length === 0) return; // unsplit group spend creates no debt
 
     const payer = t.paidBy || t.userId;
-    const covered = splits.reduce((s, sp) => s + (sp.amount || 0), 0);
+    const coveredPaise = splits.reduce((sum, sp) => sum + toPaise(sp.amount || 0), 0);
 
     // The payer fronted what the group consumed…
-    bump(payer, covered);
+    bump(payer, coveredPaise);
     // …and each member owes their own share back.
-    splits.forEach((sp) => bump(sp.userId, -(sp.amount || 0)));
+    splits.forEach((sp) => bump(sp.userId, -toPaise(sp.amount || 0)));
   });
 
   settlements.forEach((s) => {
-    // Paying someone back moves you toward zero and them toward zero.
-    bump(s.from, s.amount);
-    bump(s.to, -s.amount);
+    // Paying someone back moves both parties toward zero.
+    const amountPaise = toPaise(s.amount || 0);
+    bump(s.from, amountPaise);
+    bump(s.to, -amountPaise);
   });
 
-  return net;
+  return netPaise;
 }
 
 /**
- * Greedy minimal-transfer suggestion: repeatedly match the largest debtor
- * against the largest creditor. Produces at most (members - 1) transfers.
+ * Greedy minimal-transfer settle-up: repeatedly match the largest debtor
+ * against the largest creditor. Produces at most (members − 1) transfers.
+ *
+ * @param {Map<string, number>} balancesPaise
+ * @returns {{from: string, to: string, amountPaise: number}[]}
  */
-function suggestSettlements(balances) {
+function suggestSettlementsPaise(balancesPaise) {
   const creditors = [];
   const debtors = [];
 
-  for (const [userId, amount] of balances.entries()) {
-    if (amount > 0.01) creditors.push({ userId, amount });
-    else if (amount < -0.01) debtors.push({ userId, amount: -amount });
+  for (const [userId, amountPaise] of balancesPaise.entries()) {
+    if (amountPaise > 0) creditors.push({ userId, amountPaise });
+    else if (amountPaise < 0) debtors.push({ userId, amountPaise: -amountPaise });
   }
 
-  creditors.sort((a, b) => b.amount - a.amount);
-  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amountPaise - a.amountPaise || (a.userId < b.userId ? -1 : 1));
+  debtors.sort((a, b) => b.amountPaise - a.amountPaise || (a.userId < b.userId ? -1 : 1));
 
   const transfers = [];
   let i = 0;
   let j = 0;
 
   while (i < debtors.length && j < creditors.length) {
-    const pay = round2(Math.min(debtors[i].amount, creditors[j].amount));
-    if (pay > 0.01) {
-      transfers.push({ from: debtors[i].userId, to: creditors[j].userId, amount: pay });
+    const payPaise = Math.min(debtors[i].amountPaise, creditors[j].amountPaise);
+    if (payPaise > 0) {
+      transfers.push({ from: debtors[i].userId, to: creditors[j].userId, amountPaise: payPaise });
     }
-    debtors[i].amount = round2(debtors[i].amount - pay);
-    creditors[j].amount = round2(creditors[j].amount - pay);
-    if (debtors[i].amount <= 0.01) i++;
-    if (creditors[j].amount <= 0.01) j++;
+    debtors[i].amountPaise -= payPaise;
+    creditors[j].amountPaise -= payPaise;
+    if (debtors[i].amountPaise === 0) i++;
+    if (creditors[j].amountPaise === 0) j++;
   }
 
   return transfers;
 }
 
-module.exports = { equalSplit, computeBalances, suggestSettlements, round2 };
+module.exports = {
+  equalSplit,
+  weightedSplit,
+  computeBalancesPaise,
+  suggestSettlementsPaise,
+};

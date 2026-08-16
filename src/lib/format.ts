@@ -74,6 +74,22 @@ export function hueFor(seed: string): number {
   return hash;
 }
 
+/**
+ * Rupees → integer paise, for the one place the client originates an amount:
+ * a user typing into an input. Everything else passes through paise the server
+ * already computed. Mirrors `finget-backend/utils/money.js`.
+ */
+export function rupeesToPaise(rupees: number): number {
+  if (!Number.isFinite(rupees)) return 0;
+  const scaled = rupees * 100;
+  const epsilon = Math.abs(scaled) * Number.EPSILON * 4;
+  return Math.sign(scaled) * Math.round(Math.abs(scaled) + epsilon);
+}
+
+export function paiseToRupees(paise: number): number {
+  return Number.isFinite(paise) ? paise / 100 : 0;
+}
+
 export function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }

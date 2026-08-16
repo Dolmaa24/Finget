@@ -127,6 +127,32 @@ export interface Simulation {
   impact: string;
   savingsDelayedDays: number | null;
   goalImpacts: GoalImpact[];
+  headline: string;
+  headlineKind: HeadlineKind;
+  daysOfSafeSpend: number | null;
+}
+
+/**
+ * Which frame produced `headline`. The two numeric frames use different
+ * denominators on purpose — `delayDays` is savings capacity lost, while
+ * `daysOfSafeSpend` is amount ÷ daily allowance. Never compare them.
+ */
+export type HeadlineKind = 'goal_delay' | 'safe_days' | 'rupees';
+
+/** Goal currency: what a purchase actually costs, in terms that land. */
+export interface Translation {
+  amountPaise: number;
+  amount: number;
+  currency: 'INR';
+  daysOfSafeSpend: number | null;
+  goalImpacts: (GoalImpact & { goalId: string | null; outstandingPaise: number })[];
+  headline: string;
+  headlineKind: HeadlineKind;
+  riskAfter: RiskLevel;
+  remainingAfterPaise: number;
+  remainingAfter: number;
+  safeDailyAfterPaise: number;
+  safeDailyAfter: number;
 }
 
 export interface BudgetSettings {
@@ -141,6 +167,17 @@ export const financeApi = {
   affordability: (scope: ScopeRef) =>
     api<Affordability>(`/finance/affordability${buildQuery(scope.context, scope.groupId)}`),
 
+  /**
+   * Goal currency. Takes integer paise — the client never does the ÷100 itself,
+   * it passes what the server gave it or uses `rupeesToPaise` at the input edge.
+   */
+  translate: (scope: ScopeRef, amountPaise: number) =>
+    api<Translation>('/finance/translate', {
+      method: 'POST',
+      body: JSON.stringify({ amountPaise, ...scopeBody(scope) }),
+    }),
+
+  /** @deprecated Rupee-denominated wrapper over `translate`. */
   simulate: (scope: ScopeRef, amount: number) =>
     api<Simulation>('/finance/simulate', {
       method: 'POST',
