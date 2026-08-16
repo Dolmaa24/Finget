@@ -1,139 +1,136 @@
+import { cn } from '../lib/cn';
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { X, Loader2 } from 'lucide-react';
+import { authApi } from '../api';
+import { useAuth } from '../context/authStore';
+import { Button, Field, Input, Modal, MoneyInput } from './ui';
 
-interface Props {
+export const AuthModal: React.FC<{
+  open: boolean;
   onClose: () => void;
   defaultTab?: 'login' | 'signup';
-}
-
-export const AuthModal: React.FC<Props> = ({ onClose, defaultTab = 'login' }) => {
+}> = ({ open, onClose, defaultTab = 'login' }) => {
+  const { signIn } = useAuth();
   const [tab, setTab] = useState<'login' | 'signup'>(defaultTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { setToken } = useAuth();
+  const [form, setForm] = useState({ name: '', email: '', password: '', monthlyIncome: '' });
 
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    monthlyIncome: '',
-  });
+  React.useEffect(() => {
+    if (open) {
+      setTab(defaultTab);
+      setError('');
+    }
+  }, [open, defaultTab]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((prev) => ({ ...prev, [key]: e.target.value }));
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    const endpoint = tab === 'login' ? '/api/auth/login' : '/api/auth/signup';
-    
     try {
-      const payload: any = { email: formData.email, password: formData.password };
-      if (tab === 'signup') {
-        payload.name = formData.name;
-        payload.monthlyIncome = Number(formData.monthlyIncome);
-      }
+      const result =
+        tab === 'login'
+          ? await authApi.login({ email: form.email, password: form.password })
+          : await authApi.signup({
+              name: form.name,
+              email: form.email,
+              password: form.password,
+              monthlyIncome: Number(form.monthlyIncome) || 0,
+            });
 
-      const res = await fetch(`http://localhost:5000${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.msg || 'Something went wrong');
-      }
-
-      setToken(data.token);
+      signIn(result.token, result.user);
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy-900/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-navy-800 border border-slate-700 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
-          <X className="w-6 h-6" />
-        </button>
-
-        <div className="px-8 pt-8 pb-6 flex border-b border-slate-700/50">
-          <button 
-            className={`flex-1 pb-4 text-lg font-semibold border-b-2 transition-colors ${tab === 'login' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
-            onClick={() => { setTab('login'); setError(''); }}
-          >
-            Login
-          </button>
-          <button 
-            className={`flex-1 pb-4 text-lg font-semibold border-b-2 transition-colors ${tab === 'signup' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
-            onClick={() => { setTab('signup'); setError(''); }}
-          >
-            Sign Up
-          </button>
-        </div>
-
-        <div className="p-8">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-3 rounded-xl mb-6">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {tab === 'signup' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Full Name</label>
-                <input 
-                  type="text" required
-                  className="w-full bg-navy-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
-                  value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
-                />
-              </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={tab === 'login' ? 'Welcome back' : 'Create your account'}
+      subtitle={
+        tab === 'login'
+          ? 'Pick up where you left off.'
+          : 'Two minutes to your first safe-to-spend number.'
+      }
+    >
+      <div className="glass-well rounded-pill p-1 flex mb-6">
+        {(['login', 'signup'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => {
+              setTab(t);
+              setError('');
+            }}
+            className={cn(
+              'flex-1 h-9 rounded-pill text-[13px] font-semibold transition-all duration-250',
+              tab === t ? 'bg-white/85 text-ink shadow-soft' : 'text-ink-3 hover:text-ink-2'
             )}
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Email Address</label>
-              <input 
-                type="email" required
-                className="w-full bg-navy-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
-                value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
-              <input 
-                type="password" required
-                className="w-full bg-navy-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
-                value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})}
-              />
-            </div>
-
-            {tab === 'signup' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Monthly Income (₹)</label>
-                <input 
-                  type="number" required min="0" step="1000"
-                  className="w-full bg-navy-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
-                  value={formData.monthlyIncome} onChange={e => setFormData({...formData, monthlyIncome: e.target.value})}
-                />
-              </div>
-            )}
-
-            <button 
-              type="submit" disabled={loading}
-              className="w-full py-4 mt-4 bg-primary hover:bg-emerald-400 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (tab === 'login' ? 'Login to Finget' : 'Create Account')}
-            </button>
-          </form>
-        </div>
+          >
+            {t === 'login' ? 'Log in' : 'Sign up'}
+          </button>
+        ))}
       </div>
-    </div>
+
+      <form onSubmit={submit} className="space-y-4">
+        {tab === 'signup' && (
+          <Field label="Full name">
+            <Input value={form.name} onChange={set('name')} required autoComplete="name" />
+          </Field>
+        )}
+
+        <Field label="Email">
+          <Input
+            type="email"
+            value={form.email}
+            onChange={set('email')}
+            required
+            autoComplete="email"
+          />
+        </Field>
+
+        <Field label="Password" hint={tab === 'signup' ? 'At least 6 characters.' : undefined}>
+          <Input
+            type="password"
+            value={form.password}
+            onChange={set('password')}
+            required
+            minLength={tab === 'signup' ? 6 : undefined}
+            autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+          />
+        </Field>
+
+        {tab === 'signup' && (
+          <Field
+            label="Monthly income"
+            hint="Used to work out what is genuinely safe to spend. You can change it later."
+          >
+            <MoneyInput
+              value={form.monthlyIncome}
+              onChange={set('monthlyIncome')}
+              min="0"
+              required
+              placeholder="50000"
+            />
+          </Field>
+        )}
+
+        {error && (
+          <p className="text-sm text-risk bg-[var(--risk-wash)] rounded-sm px-3.5 py-2.5">{error}</p>
+        )}
+
+        <Button type="submit" loading={loading} size="lg" className="w-full !mt-6">
+          {tab === 'login' ? 'Log in' : 'Create account'}
+        </Button>
+      </form>
+    </Modal>
   );
 };

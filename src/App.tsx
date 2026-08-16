@@ -5,53 +5,50 @@ import { GoalsPage } from './pages/GoalsPage';
 import { InsightsPage } from './pages/InsightsPage';
 import { AiCoachPage } from './pages/AiCoachPage';
 import { FriendsModePage } from './pages/FriendsModePage';
+import { SplitPage } from './pages/SplitPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { FutureImpactPage } from './pages/FutureImpactPage';
-import { MainLayout } from './components/MainLayout';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AppShell } from './components/AppShell';
+import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/authStore';
+import { ScopeProvider } from './context/ScopeContext';
+import { ToastProvider } from './context/ToastContext';
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
-  if (!token) return <Navigate to="/" />;
-  return <>{children}</>;
-}
-
-function AppContent() {
+function AppRoutes() {
   const { token } = useAuth();
 
   return (
     <Routes>
-      {/* Public Route */}
-      <Route path="/" element={!token ? <LandingPage /> : <Navigate to="/dashboard" />} />
+      <Route path="/" element={token ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
 
-      {/* Protected Routes wrapped in MainLayout */}
-      <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+      <Route element={token ? <AppShell /> : <Navigate to="/" replace />}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/goals" element={<GoalsPage />} />
+        <Route path="/split" element={<SplitPage />} />
+        <Route path="/future-impact" element={<FutureImpactPage />} />
         <Route path="/insights" element={<InsightsPage />} />
         <Route path="/coach" element={<AiCoachPage />} />
         <Route path="/friends" element={<FriendsModePage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/transactions" element={<TransactionsPage />} />
-        <Route path="/future-impact" element={<FutureImpactPage />} />
       </Route>
+
+      <Route path="*" element={<Navigate to={token ? '/dashboard' : '/'} replace />} />
     </Routes>
   );
 }
 
-import { ScopeProvider } from './context/ScopeContext';
-
-function App() {
+export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <ScopeProvider>
-          <AppContent />
-        </ScopeProvider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <ScopeProvider>
+            <AppRoutes />
+          </ScopeProvider>
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   );
 }
-
-export default App;

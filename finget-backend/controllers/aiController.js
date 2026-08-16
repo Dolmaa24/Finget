@@ -1,129 +1,132 @@
-const OpenAI = require("openai");
 const AIConversation = require("../models/AIConversation");
-const Transaction = require("../models/Transaction");
-const User = require("../models/User");
-const Settings = require("../models/Settings");
-const Group = require("../models/Group");
-const { isGroupMember } = require("../utils/groupAuth");
+const { getClient, isAiConfigured, MODEL, AI_DISABLED_MESSAGE } = require("../services/aiClient");
+const { resolveScope, goalsForScope, handleScopeError } = require("../services/scopeResolver");
 const { calculateAffordability } = require("../services/affordabilityService");
 const { orchestrateInsights } = require("../services/insights/insightOrchestrator");
 const { buildCoachContext } = require("../services/coachContextBuilder");
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-async function loadTransactionsForCoach(req, context, groupId) {
-  if (context === "group" && groupId) {
-    const group = await Group.findById(groupId);
-    if (!group || !isGroupMember(group, req.user)) {
-      return { error: 403, msg: "Not authorized for this group" };
-    }
-    const transactions = await Transaction.find({ groupId }).sort({ date: -1 }).limit(500);
-    return { transactions };
-  }
-  const transactions = await Transaction.find({
-    userId: req.user,
-    groupId: { $exists: false },
-  })
-    .sort({ date: -1 })
-    .limit(500);
-  return { transactions };
+/** One conversation thread per user per scope. */
+function conversationQuery(userId, context, groupId) {
+  const query = { userId };
+  if (context === "group" && groupId) query.groupId = groupId;
+  else query.groupId = { $exists: false };
+  return query;
 }
 
 exports.coachHistory = async (req, res) => {
   try {
     const { context, groupId } = req.query;
-    const query = { userId: req.user };
-    if (context === "group" && groupId) {
-      const group = await Group.findById(groupId);
-      if (!group || !isGroupMember(group, req.user)) {
-        return res.status(403).json({ msg: "Not authorized for this group" });
-      }
-      query.groupId = groupId;
-    } else {
-      query.groupId = { $exists: false };
-    }
+    // Resolving the scope also enforces group membership.
+    await resolveScope({ userId: req.user, context, groupId });
 
-    const conv = await AIConversation.findOne(query).lean();
-    const messages = (conv?.messages || []).map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-    res.json({ messages });
+    const conv = await AIConversation.findOne(
+      conversationQuery(req.user, context, groupId)
+    ).lean();
+
+    res.json({
+      messages: (conv?.messages || []).map((m) => ({ role: m.role, content: m.content })),
+      aiEnabled: isAiConfigured(),
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleScopeError(err, res);
+  }
+};
+
+exports.clearCoachHistory = async (req, res) => {
+  try {
+    const { context, groupId } = req.query;
+    await resolveScope({ userId: req.user, context, groupId });
+    await AIConversation.deleteOne(conversationQuery(req.user, context, groupId));
+    res.json({ msg: "Conversation cleared" });
+  } catch (err) {
+    handleScopeError(err, res);
   }
 };
 
 exports.moneyCoach = async (req, res) => {
   try {
-    const { income, expenses, safeToSpend, question, context, groupId } = req.body;
+    const { question, context, groupId } = req.body;
 
-    if (context === "group" && groupId) {
-      const group = await Group.findById(groupId);
-      if (!group || !isGroupMember(group, req.user)) {
-        return res.status(403).json({ msg: "Not authorized for this group" });
-      }
+    if (!question || !String(question).trim()) {
+      return res.status(400).json({ error: "question is required" });
     }
 
-    const query = { userId: req.user };
-    if (context === "group" && groupId) {
-      query.groupId = groupId;
-    } else {
-      query.groupId = { $exists: false };
+    const scope = await resolveScope({ userId: req.user, context, groupId });
+
+    // Without a key, stream back a useful explanation rather than a 401 dump.
+    if (!isAiConfigured()) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+      res.write(`data: ${JSON.stringify({ text: AI_DISABLED_MESSAGE })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      return res.end();
     }
 
-    const loaded = await loadTransactionsForCoach(req, context, groupId);
-    if (loaded.error) {
-      return res.status(loaded.error).json({ msg: loaded.msg });
-    }
+    // Numbers come from the database, not from whatever the client posted, so
+    // the coach can no longer be fed a fabricated income by a crafted request.
+    const affordability = calculateAffordability(
+      scope.owner,
+      scope.transactions,
+      scope.settings
+    );
 
     const coachData = await buildCoachContext({
-      groupId: context === "group" ? groupId : undefined,
-      transactions: loaded.transactions,
+      userId: req.user,
+      groupId: scope.isGroup ? groupId : undefined,
+      transactions: scope.transactions,
     });
 
+    const query = conversationQuery(req.user, context, groupId);
     let conversation = await AIConversation.findOne(query);
     if (!conversation) {
-      conversation = new AIConversation(query);
+      conversation = new AIConversation({
+        userId: req.user,
+        ...(scope.isGroup ? { groupId } : {}),
+      });
     }
 
     conversation.messages.push({ role: "user", content: question });
 
-    const dataBlock = JSON.stringify(coachData, null, 0);
-
     const systemPrompt = `You are Finget AI Coach — a practical, non-judgmental financial advisor.
-Session numbers (may overlap with structured data; prefer structured data for facts):
-- Monthly Income (user-reported for this chat): ${income}
-- Total obligations / expenses baseline: ${expenses}
-- Safe daily spend hint: ${safeToSpend}
-Scope: ${context === "group" ? "Shared group wallet — speak about \"we\" and shared goals." : "Personal finance — speak to \"you\"."}
 
-STRUCTURED FINANCIAL DATA (authoritative for amounts, categories, goals):
-${dataBlock}
+VERIFIED FIGURES (from the database — treat as authoritative):
+- Monthly income${scope.isGroup ? " (pooled across members)" : ""}: ₹${Math.round(affordability.income)}
+- Spent this month: ₹${Math.round(affordability.expenses)}
+- Remaining this month: ₹${Math.round(affordability.remaining)}
+- Safe to spend per day (${affordability.daysLeftInMonth} days left): ₹${Math.round(affordability.safeDaily)}
+- Risk level: ${affordability.risk}
+
+Scope: ${
+      scope.isGroup
+        ? `Shared group wallet "${scope.owner.name}" with ${scope.group.members.length} members — speak about "we", "the group" and shared goals.`
+        : 'Personal finance — speak to "you".'
+    }
+
+STRUCTURED FINANCIAL DATA (authoritative for categories, goals, recent activity):
+${JSON.stringify(coachData)}
 
 Rules:
-- Ground numbers in STRUCTURED FINANCIAL DATA when possible (e.g. "You overspent on food this week by X%" only if derivable).
-- Give 1–3 concrete next steps. Use ₹ for currency.
+- Ground every number in the data above. Never invent figures.
+- Write amounts as rounded rupees with Indian digit grouping: ₹3,394 — never ₹3393.8125.
+- Give 1–3 concrete next steps.
 - Reference goals and category trends when relevant.
-- Remember the recent conversation; stay consistent with prior assistant messages in this thread.
-`;
+- Stay consistent with prior assistant messages in this thread.
+- Be concise: under 180 words unless asked for detail.`;
 
     const history = conversation.messages
       .slice(-12)
       .map((m) => ({ role: m.role, content: m.content }));
-
-    const openaiMessages = [{ role: "system", content: systemPrompt }, ...history];
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
-    const stream = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: openaiMessages,
+    const stream = await getClient().chat.completions.create({
+      model: MODEL,
+      messages: [{ role: "system", content: systemPrompt }, ...history],
       stream: true,
     });
 
@@ -137,63 +140,52 @@ Rules:
       }
     }
 
-    conversation.messages.push({ role: "assistant", content: fullResponse });
-    conversation.lastUpdated = new Date();
-    await conversation.save();
+    if (fullResponse) {
+      conversation.messages.push({ role: "assistant", content: fullResponse });
+      conversation.lastUpdated = new Date();
+      await conversation.save();
+    }
 
     res.write("data: [DONE]\n\n");
     res.end();
   } catch (err) {
+    console.error("Coach error:", err.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-      res.end();
+      if (err.status && err.msg) return res.status(err.status).json({ error: err.msg });
+      return res.status(500).json({ error: "The coach could not respond. Please try again." });
     }
+    res.write(
+      `data: ${JSON.stringify({ error: "The coach was interrupted. Please try again." })}\n\n`
+    );
+    res.end();
   }
 };
 
 exports.getInsights = async (req, res) => {
   try {
-    const { context, groupId } = req.query;
+    const scope = await resolveScope({
+      userId: req.user,
+      context: req.query.context,
+      groupId: req.query.groupId,
+    });
 
-    let userOrGroup = null;
-    let transactions = [];
-
-    if (context === "group" && groupId) {
-      userOrGroup = await Group.findById(groupId).populate("members");
-      if (!userOrGroup || !isGroupMember(userOrGroup, req.user)) {
-        return res.status(403).json({ msg: "Not authorized for this group" });
-      }
-      transactions = await Transaction.find({ groupId });
-      userOrGroup.monthlyIncome = userOrGroup.members.reduce(
-        (sum, member) => sum + (member.monthlyIncome || 0),
-        0
-      );
-    } else {
-      userOrGroup = await User.findById(req.user);
-      transactions = await Transaction.find({ userId: req.user, groupId: { $exists: false } });
-    }
-
-    const settings = await Settings.findOne({ userId: req.user });
-    const currentAffordability = calculateAffordability(userOrGroup, transactions, settings);
-
-    const Goal = require("../models/Goal");
-    const goalQuery =
-      context === "group" && groupId
-        ? { groupId }
-        : { userId: req.user, groupId: { $exists: false } };
-    const goals = await Goal.find(goalQuery).lean();
+    const currentAffordability = calculateAffordability(
+      scope.owner,
+      scope.transactions,
+      scope.settings
+    );
+    const goals = await goalsForScope(scope);
 
     const insightsData = await orchestrateInsights(
-      userOrGroup,
-      transactions,
+      scope.owner,
+      scope.transactions,
       currentAffordability,
-      goals
+      goals,
+      scope.isGroup ? scope.group.members.length : 1
     );
 
-    res.json(insightsData);
+    res.json({ ...insightsData, aiEnabled: isAiConfigured() });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleScopeError(err, res);
   }
 };

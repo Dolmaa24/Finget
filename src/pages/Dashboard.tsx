@@ -1,156 +1,300 @@
-import React, { useState } from 'react';
+import { cn } from '../lib/cn';
+import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { LogOut, Activity, X } from 'lucide-react';
-import { useFingetBackend } from '../hooks/useFingetBackend';
+import {
+  Lightbulb,
+  ArrowRight,
+  Wallet,
+  TrendingUp,
+  Users,
+  Scale,
+  Activity,
+  PiggyBank,
+} from 'lucide-react';
+import { useAuth } from '../context/authStore';
+import { useScope } from '../context/scopeStore';
+import {
+  useAffordability,
+  useBalances,
+  useGroupLiveSync,
+  useInsights,
+  useTransactions,
+} from '../hooks/useFinget';
 import { AffordabilityCard } from '../components/AffordabilityCard';
 import { ScenarioSimulator } from '../components/ScenarioSimulator';
-import { AiMoneyCoach } from '../components/AiMoneyCoach';
 import { GoalsTracker } from '../components/GoalsTracker';
+import { inr, relativeDate } from '../lib/format';
+import { Avatar, Badge, Button, EmptyState, Panel, SkeletonPanel, Stat } from '../components/ui';
+import type { RiskLevel } from '../api';
 
-import { useAuth } from '../context/AuthContext';
+type Preview = { safeDaily: number; remaining: number; risk: RiskLevel } | null;
 
 export const Dashboard: React.FC = () => {
-  const {
-    affordability,
-    simulatePurchase,
-    messages,
-    sendMessageToCoach,
-    loading,
-    handleAddTransaction,
-    lastNudge,
-    clearNudge,
-  } = useFingetBackend();
-  const { logout } = useAuth();
-  const [simulatedData, setSimulatedData] = useState<any>(null);
+  const { user } = useAuth();
+  const { isFriends, group } = useScope();
+  const { data: affordability, loading, error } = useAffordability();
+  const { data: transactions } = useTransactions();
+  const { data: insightData } = useInsights();
+  const { data: sheet } = useBalances();
+  const [preview, setPreview] = useState<Preview>(null);
 
-  const handleSimulate = async (amount: number) => {
-    const simResult = await simulatePurchase(amount);
-    
-    // Create a mock affordability object for the card preview
-    setSimulatedData({
-      ...affordability,
-      safeToSpendToday: Math.max(0, affordability.safeToSpendToday - amount),
-      remainingBudget: simResult.newRemainingBudget,
-      riskLevel: simResult.newRiskLevel,
-    });
-    
-    return simResult;
-  };
+  // Live updates when another member acts.
+  useGroupLiveSync();
+
+  const handlePreview = useCallback((next: Preview) => setPreview(next), []);
+
+  const firstName = user?.name?.split(' ')[0] || 'there';
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  })();
+
+  const myBalance = sheet.balances.find((b) => b.userId === user?._id);
+  const recent = transactions.slice(0, 5);
+  const topInsight = insightData.insights[0];
+
+  if (error) {
+    return (
+      <Panel className="mt-6">
+        <EmptyState
+          icon={<Activity className="w-6 h-6" />}
+          title="Could not load your dashboard"
+          body={error}
+        />
+      </Panel>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-navy-900 flex flex-col pt-20 relative">
-      {/* Glassmorphism Navbar */}
-      <nav className="fixed top-0 w-full z-50 transition-all duration-300 bg-navy-900/80 backdrop-blur-lg border-b border-slate-700/50 shadow-lg py-3">
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-             <div className="h-8 w-auto">
-                <img src="/logo.png" alt="Finget Logo" className="h-full w-auto object-contain" />
-             </div>
-             <span className="text-xl font-bold tracking-widest text-[#00E5FF]">FINGΞT</span>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-4">
-            <button className="p-2 text-slate-300 hover:text-white transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </button>
-            <button onClick={logout} className="p-2 text-slate-300 hover:text-danger transition-colors">
-              <LogOut className="w-6 h-6 stroke-[1.5]" />
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-4 sm:p-8 lg:p-12 relative w-full">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] pointer-events-none -z-10" />
-        
-        <div className="max-w-6xl mx-auto">
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-            </div>
+    <div className="space-y-7">
+      <header className="pt-2">
+        <p className="eyebrow mb-2">
+          {isFriends ? `Friends mode · ${group?.name ?? ''}` : 'Personal mode'}
+        </p>
+        <h1 className="display text-[36px] sm:text-[46px]">
+          {isFriends ? (
+            <>
+              {group?.emoji} {group?.name}
+            </>
           ) : (
             <>
-          {lastNudge && (
-            <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-              <span className="flex-1">{lastNudge.message}</span>
-              <button type="button" onClick={clearNudge} className="text-amber-200/80 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+              {greeting}, {firstName}
+            </>
           )}
-              {/* Header */}
-          <header className="flex justify-between items-center mb-10">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight text-slate-100 mb-1">Your Focus</h2>
-              <p className="text-slate-400 font-medium">Clear mind, safe spending.</p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => handleAddTransaction({ amount: 2000, category: 'Food', type: 'expense' })}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-navy-800 border border-slate-700/50 rounded-full hover:bg-slate-800 transition text-sm font-medium text-slate-200"
-              >
-                + Test Tx (₹2k)
-              </button>
-              <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-navy-800 border border-slate-700/50 rounded-full">
-                <Activity className="w-4 h-4 text-emerald-400" />
-                <span className="text-sm font-medium text-slate-200">Engine Active</span>
-              </div>
-            </div>
-          </header>
+        </h1>
+        <p className="text-ink-2 mt-2">
+          {isFriends
+            ? 'One shared wallet. Everything below is pooled across members.'
+            : 'Clear head, safe spending.'}
+        </p>
+      </header>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* Left Column (Primary Tools) */}
-            <div className="xl:col-span-2 space-y-8">
-              
-              {/* Top Priority UI Element */}
-              <AffordabilityCard 
-                 data={affordability} 
-                 simulatedData={simulatedData} 
+      {loading ? (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <SkeletonPanel height={320} className="xl:col-span-2" />
+          <SkeletonPanel height={320} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+          {/* -------- Primary column -------- */}
+          <div className="xl:col-span-2 space-y-6">
+            <AffordabilityCard
+              data={affordability}
+              simulated={preview}
+              isGroup={isFriends}
+              groupName={group?.name}
+              memberCount={affordability.memberCount}
+            />
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger">
+              <Stat
+                label="Income"
+                value={inr(affordability.income)}
+                sub={isFriends ? 'Pooled' : 'This month'}
+                icon={<Wallet className="w-3.5 h-3.5" />}
               />
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Scenario Simulator */}
-                <ScenarioSimulator 
-                  onSimulate={handleSimulate} 
-                  onClearSimulate={() => setSimulatedData(null)}
-                  currentAffordability={affordability} 
+              <Stat
+                label="Spent"
+                value={inr(affordability.expenses)}
+                sub={`${affordability.daysLeftInMonth} days left`}
+                icon={<TrendingUp className="w-3.5 h-3.5" />}
+                tone={affordability.expenses > affordability.income * 0.8 ? 'warn' : 'neutral'}
+              />
+              <Stat
+                label="Left"
+                value={inr(affordability.remaining)}
+                tone={affordability.remaining < 0 ? 'risk' : 'safe'}
+                icon={<PiggyBank className="w-3.5 h-3.5" />}
+              />
+              {isFriends ? (
+                <Stat
+                  label="Your balance"
+                  value={inr(myBalance?.balance ?? 0)}
+                  sub={
+                    (myBalance?.balance ?? 0) > 0
+                      ? 'You are owed'
+                      : (myBalance?.balance ?? 0) < 0
+                        ? 'You owe'
+                        : 'Settled'
+                  }
+                  tone={
+                    (myBalance?.balance ?? 0) > 0
+                      ? 'safe'
+                      : (myBalance?.balance ?? 0) < 0
+                        ? 'risk'
+                        : 'neutral'
+                  }
+                  icon={<Scale className="w-3.5 h-3.5" />}
                 />
+              ) : (
+                <Stat
+                  label="Health"
+                  value={insightData.healthScore?.score ?? '—'}
+                  sub={insightData.healthScore?.label}
+                  tone="accent"
+                  icon={<Activity className="w-3.5 h-3.5" />}
+                />
+              )}
+            </div>
 
-                <div className="bg-navy-800 rounded-3xl p-6 border border-slate-700/50 shadow-lg flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-100 mb-4">Insights</h3>
-                    <p className="text-slate-400 text-sm leading-relaxed mb-4">
-                      Open the full insights hub for health score, subscription leak detection, category alerts, and
-                      AI-generated suggestions — all driven by your real transaction data.
-                    </p>
-                  </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ScenarioSimulator affordability={affordability} onPreview={handlePreview} />
+
+              {/* Recent activity */}
+              <div className="glass glass-sheen rounded-lg p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="font-semibold text-ink">Recent activity</h3>
                   <Link
-                    to="/insights"
-                    className="mt-2 text-sm text-primary font-medium hover:text-primary-hover flex justify-end"
+                    to="/transactions"
+                    className="text-[13px] font-semibold text-accent hover:opacity-75 inline-flex items-center gap-1"
                   >
-                    View insights →
+                    All <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
+
+                {recent.length === 0 ? (
+                  <EmptyState
+                    title="Nothing logged yet"
+                    body="Use the Add button up top to record your first entry."
+                    className="!py-8"
+                  />
+                ) : (
+                  <ul className="space-y-2.5">
+                    {recent.map((t) => {
+                      const payer = typeof t.paidBy === 'object' ? t.paidBy?.name : undefined;
+                      return (
+                        <li key={t._id} className="flex items-center gap-3">
+                          {isFriends && payer ? (
+                            <Avatar name={payer} size={34} />
+                          ) : (
+                            <span
+                              className={cn(
+                                'w-[34px] h-[34px] rounded-sm flex items-center justify-center shrink-0',
+                                t.type === 'income'
+                                  ? 'bg-[var(--safe-wash)] text-safe'
+                                  : 'bg-white/50 text-ink-3'
+                              )}
+                            >
+                              <Wallet className="w-4 h-4" />
+                            </span>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13.5px] font-medium text-ink truncate">
+                              {t.note || t.category}
+                            </p>
+                            <p className="text-[11.5px] text-ink-3">
+                              {isFriends && payer ? `${payer} · ` : ''}
+                              {relativeDate(t.date)}
+                            </p>
+                          </div>
+                          <span
+                            className={cn(
+                              'text-sm font-semibold numeric shrink-0',
+                              t.type === 'income' ? 'text-safe' : 'text-ink'
+                            )}
+                          >
+                            {t.type === 'income' ? '+' : '−'}
+                            {inr(t.amount)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
             </div>
+          </div>
 
-            {/* Right Column (Secondary / Engagement Tools) */}
-            <div className="space-y-8">
-              {/* AI Money Coach */}
-              <AiMoneyCoach messages={messages} onSendMessage={sendMessageToCoach} />
-              
-              {/* Goals Tracker */}
-              <GoalsTracker />
-            </div>
-            </div>
-          </>
-        )}
+          {/* -------- Secondary column -------- */}
+          <div className="space-y-6">
+            <GoalsTracker isGroup={isFriends} />
+
+            {isFriends && sheet.balances.length > 0 && (
+              <div className="glass glass-sheen rounded-lg p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-9 h-9 rounded-md bg-[var(--accent-wash)] text-accent flex items-center justify-center">
+                      <Users className="w-[18px] h-[18px]" />
+                    </span>
+                    <h3 className="font-semibold text-ink">Who owes what</h3>
+                  </div>
+                  <Link
+                    to="/split"
+                    className="text-[13px] font-semibold text-accent hover:opacity-75 inline-flex items-center gap-1"
+                  >
+                    Settle <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+
+                <ul className="space-y-3">
+                  {sheet.balances.map((b) => (
+                    <li key={b.userId} className="flex items-center gap-3">
+                      <Avatar name={b.name} size={32} />
+                      <span className="flex-1 text-[13.5px] text-ink truncate">
+                        {b.userId === user?._id ? 'You' : b.name}
+                      </span>
+                      <Badge
+                        tone={b.balance > 0.01 ? 'safe' : b.balance < -0.01 ? 'risk' : 'neutral'}
+                      >
+                        {b.balance > 0.01
+                          ? `owed ${inr(b.balance)}`
+                          : b.balance < -0.01
+                            ? `owes ${inr(Math.abs(b.balance))}`
+                            : 'settled'}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {topInsight && (
+              <div className="glass glass-sheen rounded-lg p-6">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <span className="w-9 h-9 rounded-md bg-[var(--warn-wash)] text-warn flex items-center justify-center">
+                    <Lightbulb className="w-[18px] h-[18px]" />
+                  </span>
+                  <h3 className="font-semibold text-ink">Top insight</h3>
+                </div>
+                <p className="text-[13.5px] font-semibold text-ink mb-1.5">{topInsight.title}</p>
+                <p className="text-[13px] text-ink-2 leading-relaxed">{topInsight.description}</p>
+                {topInsight.actionable_tip && (
+                  <p className="text-[13px] text-accent font-medium mt-3">
+                    → {topInsight.actionable_tip}
+                  </p>
+                )}
+                <Link to="/insights">
+                  <Button variant="glass" size="sm" className="mt-5 w-full">
+                    See all insights
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
-      </main>
+      )}
     </div>
   );
 };

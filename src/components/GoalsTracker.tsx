@@ -1,57 +1,74 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Target } from 'lucide-react';
-import { useGoals } from '../hooks/useGoals';
-import { useScope } from '../context/ScopeContext';
+import { Target, ArrowRight } from 'lucide-react';
+import { useGoals } from '../hooks/useFinget';
+import { inr, pct } from '../lib/format';
+import { Progress, EmptyState, Button } from './ui';
 
-const colors = ['bg-primary', 'bg-blue-500', 'bg-amber-500', 'bg-violet-500'];
-
-export const GoalsTracker: React.FC = () => {
-  const { context, groupId } = useScope();
-  const { goals, loading } = useGoals({ context, groupId: groupId || undefined });
-
+export const GoalsTracker: React.FC<{ isGroup?: boolean }> = ({ isGroup }) => {
+  const { goals, loading } = useGoals();
   const top = goals.slice(0, 4);
 
   return (
-    <div className="bg-navy-800 rounded-3xl p-6 border border-slate-700/50 shadow-lg">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <Target className="w-5 h-5 text-emerald-400" />
-          <h3 className="text-lg font-semibold text-slate-100">Goals</h3>
+    <div className="glass glass-sheen rounded-lg p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2.5">
+          <span className="w-9 h-9 rounded-md bg-[var(--safe-wash)] text-safe flex items-center justify-center">
+            <Target className="w-[18px] h-[18px]" />
+          </span>
+          <h3 className="font-semibold text-ink">{isGroup ? 'Shared goals' : 'Goals'}</h3>
         </div>
-        <Link to="/goals" className="text-xs text-primary font-medium hover:underline">
-          Manage
+        <Link
+          to="/goals"
+          className="text-[13px] font-semibold text-accent hover:opacity-75 transition-opacity inline-flex items-center gap-1"
+        >
+          Manage <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
 
       {loading ? (
-        <p className="text-slate-500 text-sm">Loading…</p>
+        <div className="space-y-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="skeleton h-12 rounded-sm" />
+          ))}
+        </div>
       ) : top.length === 0 ? (
-        <p className="text-slate-500 text-sm">No goals yet. Create one on the Goals page.</p>
+        <EmptyState
+          title="No goals yet"
+          body={
+            isGroup
+              ? 'Set a shared target — everyone can chip in.'
+              : 'Give your savings a destination.'
+          }
+          action={
+            <Link to="/goals">
+              <Button size="sm">Create a goal</Button>
+            </Link>
+          }
+          className="!py-8"
+        />
       ) : (
-        <div className="space-y-6">
-          {top.map((goal, i) => {
-            const pct = Math.min(
-              100,
-              Math.round(((goal.currentAmount || 0) / Math.max(1, goal.targetAmount)) * 100)
-            );
+        <div className="space-y-5">
+          {top.map((goal) => {
+            const percent = pct(goal.currentAmount || 0, goal.targetAmount);
             return (
               <div key={goal._id}>
-                <div className="flex justify-between items-end mb-2">
-                  <div>
-                    <h4 className="text-sm font-medium text-slate-200">{goal.name}</h4>
-                    <p className="text-xs text-slate-400">
-                      ₹{(goal.currentAmount || 0).toLocaleString()} / ₹{goal.targetAmount.toLocaleString()}
+                <div className="flex justify-between items-end mb-2 gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] font-medium text-ink truncate">{goal.name}</p>
+                    <p className="text-[12px] text-ink-3 numeric">
+                      {inr(goal.currentAmount || 0)} of {inr(goal.targetAmount)}
                     </p>
                   </div>
-                  <span className="text-sm font-bold text-slate-300">{pct}%</span>
+                  <span className="text-sm font-semibold text-ink-2 numeric shrink-0">
+                    {percent}%
+                  </span>
                 </div>
-                <div className="h-2 w-full bg-navy-900 rounded-full overflow-hidden border border-slate-700">
-                  <div
-                    className={`h-full ${colors[i % colors.length]} rounded-full transition-all duration-1000 ease-out`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
+                <Progress
+                  value={percent}
+                  tone={percent >= 100 ? 'safe' : 'accent'}
+                  height={6}
+                />
               </div>
             );
           })}

@@ -23,11 +23,11 @@ function summarizeByCategory(transactions, since) {
 /**
  * Builds structured context for the AI coach from live data.
  * @param {object} opts
- * @param {string} opts.userId
- * @param {string} [opts.groupId]
+ * @param {string} opts.userId  required for personal scope goal lookup
+ * @param {string} [opts.groupId] when set, goals are read from the shared group
  * @param {import('mongoose').Document[]} opts.transactions
  */
-async function buildCoachContext({ groupId, transactions }) {
+async function buildCoachContext({ userId, groupId, transactions }) {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * MS_DAY);
   const sevenDaysAgo = new Date(now.getTime() - 7 * MS_DAY);
@@ -53,7 +53,9 @@ async function buildCoachContext({ groupId, transactions }) {
     )
     .reduce((s, t) => s + t.amount, 0);
 
-  let goalsQuery = groupId ? { groupId } : { userId, groupId: { $exists: false } };
+  const goalsQuery = groupId
+    ? { groupId }
+    : { userId, groupId: { $exists: false } };
   const goals = await Goal.find(goalsQuery).lean();
 
   const goalsSummary = goals.map((g) => ({

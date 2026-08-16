@@ -1,243 +1,297 @@
+import { cn } from '../lib/cn';
 import React, { useState } from 'react';
-import { useGoals, type Goal } from '../hooks/useGoals';
-import { Target, TrendingUp, AlertCircle, Plus, Trash2, GripVertical } from 'lucide-react';
-import { useScope } from '../context/ScopeContext';
+import { Target, Plus, Trash2, TrendingUp, Flag, CalendarClock, Users } from 'lucide-react';
+import { useScope } from '../context/scopeStore';
+import { useToast } from '../context/toastStore';
+import { useGoals, useGroupLiveSync } from '../hooks/useFinget';
+import type { Goal } from '../api';
+import { inr, pct, fullDate } from '../lib/format';
+import { Avatar, Badge, Button, EmptyState, Field, Input, Modal, MoneyInput, PageHeader, Progress, SkeletonPanel } from '../components/ui';
+
+const PRIORITY_TONE = {
+  High: 'risk',
+  Medium: 'warn',
+  Low: 'safe',
+} as const;
 
 export const GoalsPage: React.FC = () => {
-  const { context, groupId } = useScope();
-  const { goals, loading, addGoal, updateGoal, deleteGoal, loadGoals } = useGoals({
-    context,
-    groupId: groupId || undefined,
-  });
-  const [newGoal, setNewGoal] = useState({ name: '', targetAmount: '', deadline: '' });
-  const [addingFundsTo, setAddingFundsTo] = useState<string | null>(null);
+  const { isFriends, group } = useScope();
+  const { toast } = useToast();
+  const { goals, loading, create, update, contribute, remove } = useGoals();
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({ name: '', targetAmount: '', deadline: '' });
+  const [saving, setSaving] = useState(false);
+  const [fundingId, setFundingId] = useState<string | null>(null);
   const [fundAmount, setFundAmount] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [dragId, setDragId] = useState<string | null>(null);
 
-  const handleAddGoal = async (e: React.FormEvent) => {
+  useGroupLiveSync();
+
+  const submitGoal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGoal.name || !newGoal.targetAmount) return;
-    await addGoal({
-      name: newGoal.name,
-      targetAmount: Number(newGoal.targetAmount),
-      deadline: newGoal.deadline || undefined,
-      priority: 'Medium',
-    });
-    setNewGoal({ name: '', targetAmount: '', deadline: '' });
+    if (!form.name.trim() || !(Number(form.targetAmount) > 0)) return;
+    setSaving(true);
+    try {
+      await create({
+        name: form.name.trim(),
+        targetAmount: Number(form.targetAmount),
+        deadline: form.deadline || undefined,
+        priority: 'Medium',
+      });
+      toast('Goal created.', 'success');
+      setForm({ name: '', targetAmount: '', deadline: '' });
+      setCreateOpen(false);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not create goal.', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleAddFunds = async (goal: Goal) => {
+  const submitFunds = async (goal: Goal) => {
     const amount = Number(fundAmount);
-    if (amount > 0) {
-      await updateGoal(goal._id, { currentAmount: (goal.currentAmount || 0) + amount });
+    if (!(amount > 0)) return;
+    try {
+      await contribute(goal._id, amount);
+      toast(`${inr(amount)} added to ${goal.name}.`, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not add funds.', 'error');
+    } finally {
+      setFundingId(null);
+      setFundAmount('');
     }
-    setAddingFundsTo(null);
-    setFundAmount('');
   };
 
-  const togglePriority = async (goal: Goal) => {
-    const nextPriority = goal.priority === 'High' ? 'Medium' : goal.priority === 'Medium' ? 'Low' : 'High';
-    await updateGoal(goal._id, { priority: nextPriority });
+  const cyclePriority = async (goal: Goal) => {
+    const next =
+      goal.priority === 'High' ? 'Medium' : goal.priority === 'Medium' ? 'Low' : 'High';
+    await update(goal._id, { priority: next });
   };
 
-  const saveInlineName = async (goal: Goal) => {
-    if (editName.trim()) await updateGoal(goal._id, { name: editName.trim() });
-    setEditingId(null);
-  };
-
-  const onDropReorder = async (targetId: string) => {
-    if (!dragId || dragId === targetId) return;
-    const ix = goals.findIndex((g) => g._id === dragId);
-    const jx = goals.findIndex((g) => g._id === targetId);
-    if (ix < 0 || jx < 0) return;
-    const next = [...goals];
-    const [moved] = next.splice(ix, 1);
-    next.splice(jx, 0, moved);
-    setDragId(null);
-    for (let i = 0; i < next.length; i++) {
-      await updateGoal(next[i]._id, { sortOrder: Date.now() + i });
+  const deleteGoal = async (goal: Goal) => {
+    try {
+      await remove(goal._id);
+      toast(`${goal.name} removed.`, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not delete.', 'error');
     }
-    loadGoals();
   };
-
-  if (loading) return <div className="p-8 text-slate-400">Loading goals...</div>;
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-white mb-2">Financial goals</h1>
-        <p className="text-slate-400">
-          {context === 'group' ? 'Shared goals for your group.' : 'Personal goals — drag cards to prioritize.'}
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        eyebrow={isFriends ? `Friends mode · ${group?.name ?? ''}` : 'Personal mode'}
+        title={isFriends ? 'Shared goals' : 'Goals'}
+        subtitle={
+          isFriends
+            ? 'Save toward something together — every contribution is credited to whoever made it.'
+            : 'Give your savings a destination and watch the pace.'
+        }
+        actions={
+          <Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreateOpen(true)}>
+            New goal
+          </Button>
+        }
+      />
 
-      <form
-        onSubmit={handleAddGoal}
-        className="bg-navy-800 rounded-3xl p-6 border border-slate-700/50 shadow-xl flex flex-wrap gap-4 items-end"
-      >
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-medium text-slate-400 mb-1">Goal name</label>
-          <input
-            type="text"
-            value={newGoal.name}
-            onChange={(e) => setNewGoal({ ...newGoal, name: e.target.value })}
-            className="w-full bg-navy-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary"
-            placeholder="e.g. Dream vacation"
-            required
-          />
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {[0, 1, 2].map((i) => (
+            <SkeletonPanel key={i} height={230} />
+          ))}
         </div>
-        <div className="flex-1 min-w-[150px]">
-          <label className="block text-xs font-medium text-slate-400 mb-1">Target amount (₹)</label>
-          <input
-            type="number"
-            value={newGoal.targetAmount}
-            onChange={(e) => setNewGoal({ ...newGoal, targetAmount: e.target.value })}
-            className="w-full bg-navy-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary"
-            placeholder="50000"
-            required
-          />
-        </div>
-        <div className="flex-1 min-w-[150px]">
-          <label className="block text-xs font-medium text-slate-400 mb-1">Deadline (optional)</label>
-          <input
-            type="date"
-            value={newGoal.deadline}
-            onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
-            className="w-full bg-navy-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary"
-          />
-        </div>
-        <button
-          type="submit"
-          className="bg-primary hover:bg-emerald-400 text-navy-950 font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> Create
-        </button>
-      </form>
+      ) : goals.length === 0 ? (
+        <EmptyState
+          icon={<Target className="w-6 h-6" />}
+          title="No goals yet"
+          body={
+            isFriends
+              ? 'Set a shared target — a trip, a deposit, a rainy-day fund.'
+              : 'A goal turns leftover money into progress instead of drift.'
+          }
+          action={
+            <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />}>
+              Create your first goal
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 stagger">
+          {goals.map((goal) => {
+            const percent = pct(goal.currentAmount || 0, goal.targetAmount);
+            const complete = percent >= 100;
+            const remaining = Math.max(0, goal.targetAmount - (goal.currentAmount || 0));
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {goals.map((goal) => {
-          const progress = Math.min(100, ((goal.currentAmount || 0) / goal.targetAmount) * 100);
-          const priorityColor =
-            goal.priority === 'High'
-              ? 'text-danger bg-danger/10 border-danger/30'
-              : goal.priority === 'Medium'
-                ? 'text-warning bg-warning/10 border-warning/30'
-                : 'text-primary bg-primary/10 border-primary/30';
+            // Per-member contribution rollup for shared goals.
+            const byPerson = new Map<string, number>();
+            (goal.contributions || []).forEach((c) => {
+              const name = typeof c.userId === 'object' ? c.userId?.name || 'Member' : 'Member';
+              byPerson.set(name, (byPerson.get(name) || 0) + c.amount);
+            });
 
-          return (
-            <div
-              key={goal._id}
-              draggable
-              onDragStart={() => setDragId(goal._id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => onDropReorder(goal._id)}
-              className="bg-navy-800 rounded-3xl p-6 border border-slate-700/50 shadow-lg relative group overflow-hidden"
-            >
-              <div className="absolute top-4 left-4 text-slate-600 cursor-grab active:cursor-grabbing">
-                <GripVertical className="w-4 h-4" />
-              </div>
-              <button
-                onClick={() => deleteGoal(goal._id)}
-                className="absolute top-4 right-4 text-slate-500 hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-
-              <div className="flex items-start justify-between mb-4 pl-6">
-                <div className="flex items-center gap-2">
-                  <div className={`p-2 rounded-lg ${priorityColor}`}>
-                    <Target className="w-4 h-4" />
+            return (
+              <div key={goal._id} className="glass glass-sheen rounded-lg p-6 group flex flex-col">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={cn(
+                        'w-9 h-9 rounded-md flex items-center justify-center shrink-0',
+                        complete
+                          ? 'bg-[var(--safe-wash)] text-safe'
+                          : 'bg-[var(--accent-wash)] text-accent'
+                      )}
+                    >
+                      <Target className="w-[18px] h-[18px]" />
+                    </span>
+                    <h3 className="font-semibold text-ink truncate">{goal.name}</h3>
                   </div>
-                  {editingId === goal._id ? (
-                    <input
-                      autoFocus
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      onBlur={() => saveInlineName(goal)}
-                      onKeyDown={(e) => e.key === 'Enter' && saveInlineName(goal)}
-                      className="font-bold text-lg text-slate-100 bg-navy-900 border border-slate-600 rounded-lg px-2 py-0.5"
-                    />
+                  <button
+                    type="button"
+                    onClick={() => deleteGoal(goal)}
+                    aria-label={`Delete ${goal.name}`}
+                    className="p-1.5 rounded-pill text-ink-4 hover:text-risk hover:bg-white/60 transition-all
+                               opacity-0 group-hover:opacity-100 focus-visible:opacity-100 shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex items-end justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-2xl font-semibold numeric text-ink">
+                      {inr(goal.currentAmount || 0)}
+                    </p>
+                    <p className="text-[12px] text-ink-3 numeric">of {inr(goal.targetAmount)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => cyclePriority(goal)}
+                    title="Change priority"
+                    className="shrink-0"
+                  >
+                    <Badge tone={PRIORITY_TONE[goal.priority]} icon={<Flag className="w-3 h-3" />}>
+                      {goal.priority}
+                    </Badge>
+                  </button>
+                </div>
+
+                <Progress value={percent} tone={complete ? 'safe' : 'accent'} />
+
+                <div className="flex items-center justify-between mt-2.5 text-[12px] text-ink-3">
+                  <span className="numeric">{percent}%</span>
+                  {goal.deadline && (
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarClock className="w-3.5 h-3.5" />
+                      {fullDate(goal.deadline)}
+                    </span>
+                  )}
+                </div>
+
+                {isFriends && byPerson.size > 0 && (
+                  <div className="mt-4 pt-4 border-t border-white/55">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3 mb-2.5 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      Contributions
+                    </p>
+                    <div className="space-y-2">
+                      {Array.from(byPerson.entries()).map(([name, amount]) => (
+                        <div key={name} className="flex items-center gap-2">
+                          <Avatar name={name} size={22} />
+                          <span className="text-[12.5px] text-ink-2 flex-1 truncate">{name}</span>
+                          <span className="text-[12.5px] font-semibold numeric text-ink">
+                            {inr(amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-auto pt-5">
+                  {fundingId === goal._id ? (
+                    <div className="flex gap-2 animate-pop">
+                      <MoneyInput
+                        autoFocus
+                        value={fundAmount}
+                        onChange={(e) => setFundAmount(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && submitFunds(goal)}
+                        placeholder="0"
+                        className="h-10"
+                      />
+                      <Button size="sm" onClick={() => submitFunds(goal)}>
+                        Add
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setFundingId(null)}>
+                        ✕
+                      </Button>
+                    </div>
+                  ) : complete ? (
+                    <p className="text-center text-[13px] font-semibold text-safe py-2">
+                      🎉 Goal reached
+                    </p>
                   ) : (
-                    <h3
-                      className="font-bold text-lg text-slate-100 cursor-text"
-                      onDoubleClick={() => {
-                        setEditingId(goal._id);
-                        setEditName(goal.name);
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      className="w-full"
+                      icon={<TrendingUp className="w-4 h-4" />}
+                      onClick={() => {
+                        setFundingId(goal._id);
+                        setFundAmount('');
                       }}
                     >
-                      {goal.name}
-                    </h3>
+                      Add funds · {inr(remaining)} to go
+                    </Button>
                   )}
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              <div className="flex items-end justify-between mb-2">
-                <div>
-                  <p className="text-2xl font-black text-white">₹{(goal.currentAmount || 0).toLocaleString()}</p>
-                  <p className="text-xs text-slate-400">of ₹{goal.targetAmount.toLocaleString()}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => togglePriority(goal)}
-                  className={`text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer border transition-colors ${priorityColor}`}
-                >
-                  {goal.priority.toUpperCase()} PRIORITY
-                </button>
-              </div>
-
-              <div className="w-full bg-navy-900 rounded-full h-2 mb-4 overflow-hidden border border-slate-700/50">
-                <div
-                  className="bg-primary h-2 rounded-full transition-all duration-1000 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-
-              {addingFundsTo === goal._id ? (
-                <div className="flex gap-2 animate-in fade-in zoom-in duration-200">
-                  <input
-                    type="number"
-                    autoFocus
-                    value={fundAmount}
-                    onChange={(e) => setFundAmount(e.target.value)}
-                    placeholder="Amount..."
-                    className="flex-1 bg-navy-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-primary focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleAddFunds(goal)}
-                    className="bg-primary text-navy-950 font-bold px-3 py-1.5 rounded-lg text-sm"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddingFundsTo(null)}
-                    className="text-slate-400 hover:text-white px-2"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setAddingFundsTo(goal._id)}
-                  className="w-full py-2 rounded-xl text-sm font-semibold text-primary hover:bg-primary/5 border border-primary/20 transition-colors flex items-center justify-center gap-2"
-                >
-                  <TrendingUp className="w-4 h-4" /> Add funds
-                </button>
-              )}
-            </div>
-          );
-        })}
-        {goals.length === 0 && (
-          <div className="col-span-full py-12 text-center border-2 border-dashed border-slate-700 rounded-3xl">
-            <AlertCircle className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-            <p className="text-slate-400 font-medium">No active goals found.</p>
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title={isFriends ? 'New shared goal' : 'New goal'}
+        subtitle={isFriends ? `Everyone in ${group?.name} can contribute.` : undefined}
+      >
+        <form onSubmit={submitGoal} className="space-y-4">
+          <Field label="What are you saving for?">
+            <Input
+              autoFocus
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder={isFriends ? 'Goa trip' : 'New laptop'}
+              required
+            />
+          </Field>
+          <Field label="Target amount">
+            <MoneyInput
+              value={form.targetAmount}
+              onChange={(e) => setForm({ ...form, targetAmount: e.target.value })}
+              placeholder="50000"
+              min="1"
+              required
+            />
+          </Field>
+          <Field label="Deadline (optional)" hint="Adding one unlocks pace warnings in Insights.">
+            <Input
+              type="date"
+              value={form.deadline}
+              onChange={(e) => setForm({ ...form, deadline: e.target.value })}
+            />
+          </Field>
+          <div className="flex justify-end gap-2.5 pt-1">
+            <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={saving}>
+              Create goal
+            </Button>
           </div>
-        )}
-      </div>
+        </form>
+      </Modal>
     </div>
   );
 };

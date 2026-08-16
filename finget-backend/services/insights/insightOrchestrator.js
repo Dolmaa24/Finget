@@ -3,34 +3,47 @@ const {
   calculateHealthScore,
   categoryOverspendVsLastMonth,
   predictiveBalanceNote,
+  goalPaceCheck,
+  weekendSpendPattern,
+  groupContributionBalance,
 } = require("./ruleEngine");
 const { generateAIInsights } = require("./aiInsights");
 
-exports.orchestrateInsights = async (user, transactions, currentAffordability, goals = []) => {
-  const insights = [];
+/**
+ * Deterministic rules first (instant, always available), then LLM reasoning
+ * layered on top when a key is configured.
+ */
+exports.orchestrateInsights = async (
+  owner,
+  transactions,
+  currentAffordability,
+  goals = [],
+  memberCount = 1
+) => {
+  const rules = [
+    analyzeSubscriptions(transactions),
+    categoryOverspendVsLastMonth(transactions),
+    predictiveBalanceNote(transactions, currentAffordability),
+    goalPaceCheck(goals, currentAffordability),
+    weekendSpendPattern(transactions),
+    groupContributionBalance(transactions, memberCount),
+  ].filter(Boolean);
 
-  const subLeak = analyzeSubscriptions(transactions);
-  if (subLeak) insights.push(subLeak);
-
-  const overspend = categoryOverspendVsLastMonth(transactions);
-  if (overspend) insights.push(overspend);
-
-  const predictive = predictiveBalanceNote(transactions, currentAffordability);
-  if (predictive) insights.push(predictive);
-
-  const health = calculateHealthScore(user.monthlyIncome || 0, currentAffordability.remaining);
+  const health = calculateHealthScore(
+    owner?.monthlyIncome || 0,
+    currentAffordability.remaining
+  );
 
   const aiGenerated = await generateAIInsights(
     transactions,
-    user.monthlyIncome || 0,
+    owner?.monthlyIncome || 0,
     currentAffordability.safeDaily,
-    goals
+    goals,
+    rules.map((r) => r.title)
   );
-
-  insights.push(...aiGenerated);
 
   return {
     healthScore: health,
-    insights,
+    insights: [...rules, ...aiGenerated],
   };
 };

@@ -1,96 +1,68 @@
-const Transaction = require("../models/Transaction");
 const Settings = require("../models/Settings");
-const User = require("../models/User");
 const Group = require("../models/Group");
-const { isGroupMember } = require("../utils/groupAuth");
+const { isGroupAdmin } = require("../utils/groupAuth");
+const { resolveScope, goalsForScope, handleScopeError } = require("../services/scopeResolver");
 const { calculateAffordability } = require("../services/affordabilityService");
 const { simulatePurchase } = require("../services/simulationService");
 const { generateAutoBudget } = require("../services/budgetService");
 const { simulateHabitChange } = require("../services/futureImpactService");
 
 exports.getAffordability = async (req, res) => {
-  const { context, groupId } = req.query;
+  try {
+    const scope = await resolveScope({
+      userId: req.user,
+      context: req.query.context,
+      groupId: req.query.groupId,
+    });
 
-  let transactions = [];
-  let userOrGroup = null;
+    const result = calculateAffordability(scope.owner, scope.transactions, scope.settings);
 
-  if (context === "group" && groupId) {
-    userOrGroup = await Group.findById(groupId).populate("members");
-    if (!userOrGroup || !isGroupMember(userOrGroup, req.user)) {
-      return res.status(403).json({ msg: "Not authorized for this group" });
-    }
-    transactions = await Transaction.find({ groupId });
-    userOrGroup.monthlyIncome = userOrGroup.members.reduce((sum, member) => sum + (member.monthlyIncome || 0), 0);
-  } else {
-    userOrGroup = await User.findById(req.user);
-    transactions = await Transaction.find({ userId: req.user, groupId: { $exists: false } });
+    res.json({
+      ...result,
+      scope: scope.isGroup ? "group" : "user",
+      memberCount: scope.isGroup ? scope.group.members.length : 1,
+    });
+  } catch (err) {
+    handleScopeError(err, res);
   }
-
-  const settings = await Settings.findOne({ userId: req.user });
-
-  const result = calculateAffordability(userOrGroup, transactions, settings);
-
-  res.json(result);
 };
 
 exports.simulate = async (req, res) => {
-  const { amount, context, groupId } = req.body;
+  try {
+    const { amount, context, groupId } = req.body;
+    const scope = await resolveScope({ userId: req.user, context, groupId });
 
-  let transactions = [];
-  let userOrGroup = null;
+    const current = calculateAffordability(scope.owner, scope.transactions, scope.settings);
+    const goals = await goalsForScope(scope);
 
-  if (context === "group" && groupId) {
-    userOrGroup = await Group.findById(groupId).populate("members");
-    if (!userOrGroup || !isGroupMember(userOrGroup, req.user)) {
-      return res.status(403).json({ msg: "Not authorized for this group" });
-    }
-    transactions = await Transaction.find({ groupId });
-    userOrGroup.monthlyIncome = userOrGroup.members.reduce((sum, member) => sum + (member.monthlyIncome || 0), 0);
-  } else {
-    userOrGroup = await User.findById(req.user);
-    transactions = await Transaction.find({ userId: req.user, groupId: { $exists: false } });
+    res.json(simulatePurchase(current, amount, goals));
+  } catch (err) {
+    handleScopeError(err, res);
   }
-
-  const settings = await Settings.findOne({ userId: req.user });
-
-  const current = calculateAffordability(userOrGroup, transactions, settings);
-
-  const result = simulatePurchase(current, amount);
-
-  res.json(result);
 };
 
 exports.getAutoBudget = async (req, res) => {
   try {
-    const { context, groupId } = req.query;
-    let transactions = [];
-    let monthlyIncome = 0;
+    const scope = await resolveScope({
+      userId: req.user,
+      context: req.query.context,
+      groupId: req.query.groupId,
+    });
 
-    if (context === "group" && groupId) {
-      const g = await Group.findById(groupId).populate("members");
-      if (!g || !isGroupMember(g, req.user)) {
-        return res.status(403).json({ msg: "Not authorized for this group" });
-      }
-      transactions = await Transaction.find({ groupId });
-      monthlyIncome = g.members.reduce((s, m) => s + (m.monthlyIncome || 0), 0);
-    } else {
-      const user = await User.findById(req.user);
-      transactions = await Transaction.find({
-        userId: req.user,
-        groupId: { $exists: false },
-      });
-      monthlyIncome = user?.monthlyIncome || 0;
-    }
+    const suggestion = generateAutoBudget(
+      scope.transactions,
+      scope.owner.monthlyIncome || 0,
+      scope.settings
+    );
 
-    const settings = await Settings.findOne({ userId: req.user });
-    const suggestion = generateAutoBudget(transactions, monthlyIncome, settings || {});
+    const settings = scope.isGroup ? null : await Settings.findOne({ userId: req.user });
 
     res.json({
       suggestion,
       activeBudget: settings?.activeBudget || null,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleScopeError(err, res);
   }
 };
 
@@ -115,27 +87,84 @@ exports.futureImpactHabit = async (req, res) => {
       return res.status(400).json({ msg: "category and reduceByMonthly required" });
     }
 
-    let transactions = [];
-    if (context === "group" && groupId) {
-      const g = await Group.findById(groupId);
-      if (!g || !isGroupMember(g, req.user)) {
-        return res.status(403).json({ msg: "Not authorized for this group" });
-      }
-      transactions = await Transaction.find({ groupId });
-    } else {
-      transactions = await Transaction.find({
-        userId: req.user,
-        groupId: { $exists: false },
-      });
-    }
+    const scope = await resolveScope({ userId: req.user, context, groupId });
 
     const out = simulateHabitChange(
-      transactions.map((t) => t.toObject()),
+      scope.transactions.map((t) => (t.toObject ? t.toObject() : t)),
       category,
       Number(reduceByMonthly)
     );
     res.json(out);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleScopeError(err, res);
+  }
+};
+
+/**
+ * Savings target + emergency buffer. These drive the risk levels in
+ * `calculateAffordability` but previously had no endpoint at all, so they were
+ * permanently stuck at 0 and "Warning" could never trigger.
+ */
+exports.getBudgetSettings = async (req, res) => {
+  try {
+    const scope = await resolveScope({
+      userId: req.user,
+      context: req.query.context,
+      groupId: req.query.groupId,
+    });
+
+    res.json({
+      scope: scope.isGroup ? "group" : "user",
+      savingsTarget: scope.settings.savingsTarget || 0,
+      emergencyBuffer: scope.settings.emergencyBuffer || 0,
+      monthlyIncome: scope.owner.monthlyIncome || 0,
+      editable: scope.isGroup ? isGroupAdmin(scope.group, req.user) : true,
+    });
+  } catch (err) {
+    handleScopeError(err, res);
+  }
+};
+
+exports.updateBudgetSettings = async (req, res) => {
+  try {
+    const { savingsTarget, emergencyBuffer, context, groupId } = req.body;
+    const scope = await resolveScope({ userId: req.user, context, groupId });
+
+    const clean = (v) => (v == null ? undefined : Math.max(0, Number(v) || 0));
+    const nextSavings = clean(savingsTarget);
+    const nextBuffer = clean(emergencyBuffer);
+
+    if (scope.isGroup) {
+      if (!isGroupAdmin(scope.group, req.user)) {
+        return res.status(403).json({ msg: "Only group admins can change shared budget settings" });
+      }
+      const update = {};
+      if (nextSavings !== undefined) update.savingsTarget = nextSavings;
+      if (nextBuffer !== undefined) update.emergencyBuffer = nextBuffer;
+      const group = await Group.findByIdAndUpdate(scope.group._id, { $set: update }, { new: true });
+      return res.json({
+        scope: "group",
+        savingsTarget: group.savingsTarget,
+        emergencyBuffer: group.emergencyBuffer,
+      });
+    }
+
+    const update = { userId: req.user };
+    if (nextSavings !== undefined) update.savingsTarget = nextSavings;
+    if (nextBuffer !== undefined) update.emergencyBuffer = nextBuffer;
+
+    const settings = await Settings.findOneAndUpdate(
+      { userId: req.user },
+      { $set: update },
+      { new: true, upsert: true }
+    );
+
+    res.json({
+      scope: "user",
+      savingsTarget: settings.savingsTarget || 0,
+      emergencyBuffer: settings.emergencyBuffer || 0,
+    });
+  } catch (err) {
+    handleScopeError(err, res);
   }
 };

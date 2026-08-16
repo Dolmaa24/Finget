@@ -1,45 +1,34 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useScope } from '../context/scopeStore';
+import { useCoach } from '../hooks/useFinget';
 import { AiMoneyCoach } from '../components/AiMoneyCoach';
-import { useAiCoach } from '../hooks/useAiCoach';
-import { useScope } from '../context/ScopeContext';
-import { fetchAffordability } from '../api';
+import { PageHeader } from '../components/ui';
 
 export const AiCoachPage: React.FC = () => {
-  const { context, groupId } = useScope();
-  const { messages, sendMessage, isTyping } = useAiCoach({ context, groupId: groupId || undefined });
-  const [affordability, setAffordability] = useState({
-    monthlyIncome: 0,
-    totalObligations: 0,
-    safeDaily: 0,
-  });
-
-  useEffect(() => {
-    fetchAffordability(context, groupId)
-      .then((data) => {
-        setAffordability({
-          monthlyIncome: data.income || 0,
-          totalObligations: data.expenses || 0,
-          safeDaily: data.safeDaily || 0,
-        });
-      })
-      .catch(console.error);
-  }, [context, groupId]);
-
-  const handleSend = (msg: string) => {
-    sendMessage(msg, affordability);
-  };
+  const { isFriends, group } = useScope();
+  const { messages, send, clear, isTyping, aiEnabled } = useCoach();
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto flex flex-col h-[80vh]">
-      <h1 className="text-3xl font-black text-white mb-2">AI Coach</h1>
-      <p className="text-slate-400 mb-6">
-        Real-time streaming advice using your transactions, goals, and patterns.
-        {context === 'group' && groupId ? ' Group-aware mode.' : ''}
-      </p>
+    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[520px]">
+      <PageHeader
+        eyebrow={isFriends ? `Friends mode · ${group?.name ?? ''}` : 'Personal mode'}
+        title="AI coach"
+        subtitle={
+          isFriends
+            ? "Ask about the group's shared wallet — it reasons over pooled income, split expenses and shared goals."
+            : 'It reads your real numbers before answering, so the advice fits your actual month.'
+        }
+      />
 
-      <div className="flex-1 min-h-0">
-        <AiMoneyCoach messages={messages} onSendMessage={handleSend} isTyping={isTyping} />
-      </div>
+      <AiMoneyCoach
+        className="flex-1 min-h-0"
+        messages={messages}
+        onSend={send}
+        onClear={clear}
+        isTyping={isTyping}
+        aiEnabled={aiEnabled}
+        isGroup={isFriends}
+      />
     </div>
   );
 };

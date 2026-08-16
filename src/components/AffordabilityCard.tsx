@@ -1,81 +1,142 @@
+import { cn } from '../lib/cn';
 import React from 'react';
-import { CreditCard, ShieldCheck, AlertTriangle, AlertOctagon } from 'lucide-react';
-import type { AffordabilityResult } from '../hooks/useFingetBackend';
+import { ShieldCheck, AlertTriangle, AlertOctagon, Users, CalendarDays } from 'lucide-react';
+import type { Affordability, RiskLevel } from '../api';
+import { inr } from '../lib/format';
+import { Badge, Progress } from './ui';
 
-interface Props {
-  data: AffordabilityResult;
-  simulatedData?: AffordabilityResult;
-}
+const RISK_CONFIG: Record<
+  RiskLevel,
+  { tone: 'safe' | 'warn' | 'risk'; icon: React.ReactNode; message: string; color: string }
+> = {
+  Safe: {
+    tone: 'safe',
+    icon: <ShieldCheck className="w-3.5 h-3.5" />,
+    message: "You're on track.",
+    color: 'var(--safe)',
+  },
+  Warning: {
+    tone: 'warn',
+    icon: <AlertTriangle className="w-3.5 h-3.5" />,
+    message: 'Running tight — watch the next few days.',
+    color: 'var(--warn)',
+  },
+  Risky: {
+    tone: 'risk',
+    icon: <AlertOctagon className="w-3.5 h-3.5" />,
+    message: 'Over budget. Savings are at risk.',
+    color: 'var(--risk)',
+  },
+};
 
-export const AffordabilityCard: React.FC<Props> = ({ data, simulatedData }) => {
-  const displayData = simulatedData || data;
-  
-  const getStatusConfig = () => {
-    switch (displayData.riskLevel) {
-      case 'Risky':
-        return {
-          color: 'text-danger',
-          bg: 'bg-danger/10',
-          borderColor: 'border-danger/30',
-          icon: <AlertOctagon className="w-5 h-5 text-danger" />,
-          message: 'Budget exceeded. Immediate risk to savings.',
-        };
-      case 'Warning':
-        return {
-          color: 'text-warning',
-          bg: 'bg-warning/10',
-          borderColor: 'border-warning/30',
-          icon: <AlertTriangle className="w-5 h-5 text-warning" />,
-          message: 'Running tight. Watch your spending.',
-        };
-      case 'Safe':
-      default:
-        return {
-          color: 'text-primary',
-          bg: 'bg-primary/10',
-          borderColor: 'border-primary/30',
-          icon: <ShieldCheck className="w-5 h-5 text-primary" />,
-          message: "You're on track.",
-        };
-    }
-  };
+/**
+ * The headline number: what is safe to spend today.
+ * When `simulated` is supplied, the card previews the post-purchase state
+ * alongside the real one instead of silently replacing it.
+ */
+export const AffordabilityCard: React.FC<{
+  data: Affordability;
+  simulated?: { safeDaily: number; remaining: number; risk: RiskLevel } | null;
+  isGroup?: boolean;
+  groupName?: string;
+  memberCount?: number;
+}> = ({ data, simulated, isGroup, groupName, memberCount }) => {
+  const shown = simulated ?? data;
+  const config = RISK_CONFIG[shown.risk] || RISK_CONFIG.Safe;
 
-  const config = getStatusConfig();
-  
+  const spentRatio =
+    data.income > 0 ? Math.min(100, (data.expenses / data.income) * 100) : 0;
+
   return (
-    <div className={`relative p-6 rounded-3xl border ${config.borderColor} bg-navy-800/80 backdrop-blur-md shadow-2xl transition-all duration-300 overflow-hidden`}>
-      {/* Background Glow */}
-      <div className={`absolute top-0 right-0 w-32 h-32 ${config.bg} rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/2`} />
-      
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-          <CreditCard className="w-4 h-4" />
-          Safe to spend today
-        </h3>
-        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${config.bg} ${config.color}`}>
-          {config.icon}
-          {displayData.riskLevel}
+    <div
+      className="glass-strong glass-sheen rounded-xl p-7 sm:p-8 relative overflow-hidden"
+      style={{
+        boxShadow: `var(--shadow-lg), inset 0 0 90px -60px ${config.color}`,
+      }}
+    >
+      {/* Ambient wash tinted by risk */}
+      <div
+        aria-hidden
+        className="absolute -top-24 -right-20 w-72 h-72 rounded-full blur-3xl opacity-25 pointer-events-none transition-colors duration-700"
+        style={{ background: config.color }}
+      />
+
+      <div className="relative flex items-start justify-between gap-4 mb-6">
+        <div className="min-w-0">
+          <p className="eyebrow">
+            {isGroup ? 'Shared safe to spend today' : 'Safe to spend today'}
+          </p>
+          {isGroup && groupName && (
+            <p className="text-[13px] text-ink-3 mt-1.5 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" />
+              {groupName} · {memberCount} member{memberCount === 1 ? '' : 's'}
+            </p>
+          )}
         </div>
+        <Badge tone={config.tone} icon={config.icon}>
+          {shown.risk}
+        </Badge>
       </div>
 
-      <div className="mb-2">
-        <span className={`text-5xl sm:text-6xl font-black tracking-tight ${config.color} transition-colors duration-500`}>
-          ₹{displayData.safeToSpendToday.toLocaleString()}
-        </span>
+      <div className="relative">
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <span
+            className="display numeric text-[52px] sm:text-[68px] leading-none transition-colors duration-500"
+            style={{ color: config.color }}
+          >
+            {inr(Math.max(0, shown.safeDaily))}
+          </span>
+          {simulated && (
+            <span className="text-base text-ink-3 line-through numeric">
+              {inr(Math.max(0, data.safeDaily))}
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-ink-2 mt-3">{config.message}</p>
       </div>
 
-      <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-700/50">
-        <div>
-          <p className="text-xs text-slate-400 mb-1">Remaining Safe Budget</p>
-          <p className="text-lg font-semibold text-slate-200">
-            ₹{displayData.remainingBudget.toLocaleString()}
-          </p>
+      {/* Month burn-down */}
+      <div className="relative mt-7 pt-6 border-t border-white/55">
+        <div className="flex items-center justify-between text-[12px] text-ink-3 mb-2">
+          <span>Spent this month</span>
+          <span className="numeric">
+            {inr(data.expenses)} of {inr(data.income)}
+          </span>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-slate-400 mb-1">Status</p>
-          <p className="text-sm font-medium text-slate-300 max-w-[120px] leading-tight">
-            {config.message}
-          </p>
+        <Progress
+          value={spentRatio}
+          tone={spentRatio > 90 ? 'risk' : spentRatio > 70 ? 'warn' : 'accent'}
+        />
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3 mb-1">
+              Left this month
+            </p>
+            <p
+              className={cn(
+                'text-lg font-semibold numeric',
+                shown.remaining < 0 ? 'text-risk' : 'text-ink'
+              )}
+            >
+              {inr(shown.remaining)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3 mb-1">
+              Days left
+            </p>
+            <p className="text-lg font-semibold numeric text-ink flex items-center gap-1.5">
+              <CalendarDays className="w-4 h-4 text-ink-3" />
+              {data.daysLeftInMonth}
+            </p>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3 mb-1">
+              Savings target
+            </p>
+            <p className="text-lg font-semibold numeric text-ink">{inr(data.savingsTarget)}</p>
+          </div>
         </div>
       </div>
     </div>
