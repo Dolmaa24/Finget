@@ -4,6 +4,7 @@ const User = require("../models/User");
 const { isGroupMember, isGroupAdmin, idOf } = require("../utils/groupAuth");
 const { evaluateSpendNudge } = require("../services/nudgeService");
 const { equalSplit } = require("../services/splitService");
+const { broadcastTripStatus } = require("./groupController");
 
 const CATEGORIES = [
   "Food", "Groceries", "Rent", "Transport", "Shopping", "Bills",
@@ -120,6 +121,10 @@ exports.addTransaction = async (req, res) => {
       });
     }
 
+    // The trip burn strip has to move the moment someone pays for lunch.
+    // Fire-and-forget: it swallows its own errors and must not delay the write.
+    if (isGroup) broadcastTripStatus(req, groupId);
+
     res.json({ transaction, nudge });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -184,6 +189,7 @@ exports.deleteTransaction = async (req, res) => {
     if (io && groupId) {
       io.to(`group:${groupId}`).emit("transaction:created", { groupId });
     }
+    if (groupId) broadcastTripStatus(req, groupId);
 
     res.json({ msg: "Deleted" });
   } catch (err) {

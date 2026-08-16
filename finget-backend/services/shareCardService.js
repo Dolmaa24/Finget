@@ -1,5 +1,5 @@
-const crypto = require("crypto");
 const ShareCard = require("../models/ShareCard");
+const { generatePublicToken } = require("../utils/token");
 
 /**
  * Share cards are the only user data Finget serves without authentication, so
@@ -12,10 +12,8 @@ const ShareCard = require("../models/ShareCard");
 
 const DEFAULT_TTL_DAYS = Number(process.env.SHARE_CARD_TTL_DAYS || 90);
 
-/** 16 random bytes → 22 URL-safe chars. Node's crypto, no dependency needed. */
-function generateToken() {
-  return crypto.randomBytes(16).toString("base64url");
-}
+/** Shared with trip preview links — see utils/token.js. */
+const generateToken = generatePublicToken;
 
 /* ------------------------------------------------------------------ */
 /* Redaction                                                           */

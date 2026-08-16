@@ -11,6 +11,8 @@ import { TransactionsPage } from './pages/TransactionsPage';
 import { FutureImpactPage } from './pages/FutureImpactPage';
 import { ExtensionConnectPage } from './pages/ExtensionConnectPage';
 import { LedgerPage } from './pages/LedgerPage';
+import { WrappedPage } from './pages/WrappedPage';
+import { JoinTripPage } from './pages/JoinTripPage';
 import { AppShell } from './components/AppShell';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/authStore';
@@ -24,6 +26,9 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={token ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
 
+      {/* Public: the trip preview has to work before anyone has an account. */}
+      <Route path="/join/:previewToken" element={<JoinTripPage />} />
+
       <Route element={token ? <AppShell /> : <Navigate to="/" replace />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/transactions" element={<TransactionsPage />} />
@@ -31,6 +36,7 @@ function AppRoutes() {
         <Route path="/split" element={<SplitPage />} />
         <Route path="/future-impact" element={<FutureImpactPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
+        <Route path="/wrapped" element={<WrappedPage />} />
         <Route path="/insights" element={<InsightsPage />} />
         <Route path="/coach" element={<AiCoachPage />} />
         <Route path="/friends" element={<FriendsModePage />} />

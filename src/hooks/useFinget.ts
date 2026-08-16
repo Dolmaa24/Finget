@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
 import {
   aiApi,
   financeApi,
@@ -7,7 +6,6 @@ import {
   groupApi,
   txApi,
   streamCoach,
-  API_ORIGIN,
   type Affordability,
   type BalanceSheet,
   type ActivityItem,
@@ -18,6 +16,7 @@ import {
 } from '../api';
 import { useAuth } from '../context/authStore';
 import { useScope } from '../context/scopeStore';
+import { acquireSocket, getSocket } from '../lib/socket';
 
 /** Shared shape for every async resource below. */
 interface Resource<T> {
@@ -213,30 +212,33 @@ export function useActivity() {
 export function useGroupLiveSync() {
   const { token } = useAuth();
   const { groupId, bumpRevision } = useScope();
-  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (!groupId || !token) return;
 
-    const socket = io(API_ORIGIN, {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-    });
-    socketRef.current = socket;
-
-    socket.on('connect', () => socket.emit('joinGroup', { groupId, token }));
+    // The shared socket, not a private one — the trip burn strip listens on
+    // the same connection and the same room. See lib/socket.ts.
+    const release = acquireSocket(groupId, token);
+    const socket = getSocket();
+    if (!socket) return release;
 
     const refresh = () => bumpRevision();
     socket.on('transaction:created', refresh);
     socket.on('settlement:created', refresh);
     socket.on('goal:updated', refresh);
     socket.on('group:updated', refresh);
+    socket.on('deflection:opened', refresh);
+    socket.on('deflection:resolved', refresh);
 
     return () => {
-      socket.emit('leaveGroup', { groupId });
-      socket.removeAllListeners();
-      socket.disconnect();
-      socketRef.current = null;
+      // Only our own listeners: another component may still be using the socket.
+      socket.off('transaction:created', refresh);
+      socket.off('settlement:created', refresh);
+      socket.off('goal:updated', refresh);
+      socket.off('group:updated', refresh);
+      socket.off('deflection:opened', refresh);
+      socket.off('deflection:resolved', refresh);
+      release();
     };
   }, [groupId, token, bumpRevision]);
 }

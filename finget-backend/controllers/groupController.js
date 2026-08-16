@@ -4,6 +4,8 @@ const Settlement = require("../models/Settlement");
 const Goal = require("../models/Goal");
 const { isGroupMember, isGroupAdmin, idOf } = require("../utils/groupAuth");
 const { computeBalancesPaise, suggestSettlementsPaise } = require("../services/splitService");
+const { computeTripStatus, paceMessage, spentPaiseFrom } = require("../services/tripService");
+const { groupIdForPreviewToken } = require("../services/tripPreviewService");
 const { toPaise, fromPaise } = require("../utils/money");
 
 /** Shared shape for every group payload the client receives. */
@@ -16,6 +18,15 @@ function serializeGroup(group, userId) {
     createdAt: group.createdAt,
     savingsTarget: group.savingsTarget || 0,
     emergencyBuffer: group.emergencyBuffer || 0,
+    kind: group.kind || "household",
+    startDate: group.startDate || null,
+    endDate: group.endDate || null,
+    potPaise: group.potPaise || 0,
+    pot: fromPaise(group.potPaise || 0),
+    timezone: group.timezone || "Asia/Kolkata",
+    wrappedGeneratedAt: group.wrappedGeneratedAt || null,
+    /** Members only. A stranger gets `previewToken` in a link, never in a payload. */
+    previewToken: group.previewToken || null,
     isAdmin: isGroupAdmin(group, userId),
     members: (group.members || []).map((m) => ({
       _id: idOf(m),
@@ -33,6 +44,70 @@ async function loadGroupForMember(groupId, userId) {
   return group;
 }
 
+/**
+ * Validates the trip half of a group payload.
+ *
+ * Throws rather than returning an error shape so create and update share one
+ * definition of "a valid trip" — the two used to be the classic place for a
+ * rule to exist in one and not the other.
+ *
+ * @param {object} body
+ * @param {object} [existing] the group being updated, for partial edits
+ * @returns {object} only the fields actually present in `body`
+ */
+function readTripFields(body, existing = {}) {
+  const out = {};
+
+  if (body.kind !== undefined) {
+    if (!["household", "trip"].includes(body.kind)) {
+      throw new Error("kind must be 'household' or 'trip'");
+    }
+    out.kind = body.kind;
+  }
+
+  const parseDate = (value, label) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) throw new Error(`${label} is not a valid date`);
+    return date;
+  };
+
+  if (body.startDate !== undefined) {
+    out.startDate = body.startDate === null ? undefined : parseDate(body.startDate, "startDate");
+  }
+  if (body.endDate !== undefined) {
+    out.endDate = body.endDate === null ? undefined : parseDate(body.endDate, "endDate");
+  }
+
+  // Checked against whichever value will actually be stored, so changing only
+  // the end date still catches an inversion.
+  const start = out.startDate ?? existing.startDate;
+  const end = out.endDate ?? existing.endDate;
+  if (start && end && end < start) {
+    throw new Error("A trip cannot end before it starts");
+  }
+
+  if (body.potPaise !== undefined) {
+    if (!Number.isInteger(body.potPaise) || body.potPaise < 0) {
+      throw new Error("potPaise must be a non-negative integer number of paise");
+    }
+    out.potPaise = body.potPaise;
+  } else if (body.pot !== undefined) {
+    const rupees = Number(body.pot);
+    if (!Number.isFinite(rupees) || rupees < 0) throw new Error("pot must be a non-negative number");
+    out.potPaise = toPaise(rupees);
+  }
+
+  if (body.timezone !== undefined) out.timezone = String(body.timezone).slice(0, 64);
+
+  const kind = out.kind ?? existing.kind ?? "household";
+  if (kind === "trip" && (out.startDate || out.endDate)) {
+    const hasBoth = (out.startDate ?? existing.startDate) && (out.endDate ?? existing.endDate);
+    if (!hasBoth) throw new Error("A trip needs both a start date and an end date");
+  }
+
+  return out;
+}
+
 exports.createGroup = async (req, res) => {
   try {
     const { name, emoji } = req.body;
@@ -40,15 +115,25 @@ exports.createGroup = async (req, res) => {
       return res.status(400).json({ msg: "Group name is required" });
     }
 
+    let trip;
+    try {
+      trip = readTripFields(req.body);
+    } catch (err) {
+      return res.status(400).json({ msg: err.message });
+    }
+
     const inviteCode = await Group.generateInviteCode();
 
     const group = await Group.create({
       name: name.trim(),
-      emoji: emoji || "👥",
+      emoji: emoji || (trip.kind === "trip" ? "🧳" : "👥"),
       inviteCode,
+      // Minted at creation so a share link exists before anyone asks for one.
+      previewToken: Group.generatePreviewToken(),
       members: [req.user],
       admins: [req.user],
       createdBy: req.user,
+      ...trip,
     });
 
     await group.populate("members", "name email monthlyIncome");
@@ -120,6 +205,13 @@ exports.updateGroup = async (req, res) => {
     const { name, emoji } = req.body;
     if (name && name.trim()) group.name = name.trim();
     if (emoji) group.emoji = emoji;
+
+    try {
+      Object.assign(group, readTripFields(req.body, group));
+    } catch (err) {
+      return res.status(400).json({ msg: err.message });
+    }
+
     await group.save();
 
     res.json(serializeGroup(group, req.user));
@@ -348,6 +440,153 @@ exports.getActivity = async (req, res) => {
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     res.json(feed.slice(0, 50));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Trip mode                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `GET /api/groups/:id/trip-status` — where the money is against where the
+ * trip is.
+ *
+ * The strip this feeds is the retention surface for a trip: a group checks it
+ * several times a day, and it is the reason they open Finget rather than
+ * arguing in the chat.
+ */
+exports.getTripStatus = async (req, res) => {
+  try {
+    const group = await loadGroupForMember(req.params.id, req.user);
+    if (!group) return res.status(403).json({ msg: "Not authorized for this group" });
+
+    if (group.kind !== "trip" || !group.startDate || !group.endDate) {
+      // Not an error — a household group simply has no clock to run against.
+      return res.json({ kind: group.kind || "household", isTrip: false });
+    }
+
+    const transactions = await Transaction.find({ groupId: group._id }).lean();
+
+    const status = computeTripStatus({
+      startDate: group.startDate,
+      endDate: group.endDate,
+      potPaise: group.potPaise || 0,
+      spentPaise: spentPaiseFrom(transactions),
+    });
+
+    res.json(serializeTripStatus(status, group));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/** Rupee mirrors alongside the paise, same convention as every other payload. */
+function serializeTripStatus(status, group) {
+  return {
+    ...status,
+    isTrip: true,
+    name: group.name,
+    emoji: group.emoji,
+    startDate: group.startDate,
+    endDate: group.endDate,
+    spent: fromPaise(status.spentPaise),
+    pot: fromPaise(status.potPaise),
+    dailyAllowance: fromPaise(status.dailyAllowancePaise),
+    projectedFinal: fromPaise(status.projectedFinalPaise),
+    projectedOverspend:
+      status.projectedOverspendPaise === null ? null : fromPaise(status.projectedOverspendPaise),
+    message: paceMessage(status),
+  };
+}
+
+/**
+ * Push the recomputed strip to everyone in the room.
+ *
+ * Exported so the transaction controller can call it after booking a group
+ * expense — the number has to move on every member's screen the moment
+ * someone pays for lunch, which is the whole point of it being live. Reuses
+ * the existing group room rather than opening a second channel.
+ */
+async function broadcastTripStatus(req, groupId) {
+  try {
+    const io = req.app.get("io");
+    if (!io) return;
+
+    const group = await Group.findById(groupId).lean();
+    if (!group || group.kind !== "trip" || !group.startDate || !group.endDate) return;
+
+    const transactions = await Transaction.find({ groupId }).lean();
+    const status = computeTripStatus({
+      startDate: group.startDate,
+      endDate: group.endDate,
+      potPaise: group.potPaise || 0,
+      spentPaise: spentPaiseFrom(transactions),
+    });
+
+    io.to(`group:${groupId}`).emit("trip:status", serializeTripStatus(status, group));
+  } catch (err) {
+    // A failed broadcast must never fail the write that triggered it. The
+    // client refetches on focus anyway.
+    console.error("trip:status broadcast failed:", err.message);
+  }
+}
+
+exports.broadcastTripStatus = broadcastTripStatus;
+
+/**
+ * `POST /api/groups/:id/rotate-preview` — kill every share link already sent.
+ *
+ * Distinct from rotating the invite code: this revokes the ability to *see*
+ * the trip, and touches nobody's membership. Rotating the code, by contrast,
+ * is about who can still join.
+ */
+exports.rotatePreviewToken = async (req, res) => {
+  try {
+    const group = await loadGroupForMember(req.params.id, req.user);
+    if (!group) return res.status(403).json({ msg: "Not authorized for this group" });
+    if (!isGroupAdmin(group, req.user)) {
+      return res.status(403).json({ msg: "Only group admins can reset the share link" });
+    }
+
+    group.previewToken = Group.generatePreviewToken();
+    await group.save();
+    res.json({ previewToken: group.previewToken });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * `POST /api/groups/join-by-token` — finish the flow the public preview began.
+ *
+ * The preview is unauthenticated; joining is not. Holding the link is what
+ * gets you the preview, and signing in is what gets you into the group.
+ */
+exports.joinByPreviewToken = async (req, res) => {
+  try {
+    const token = String(req.body.previewToken || "").trim();
+    if (!token) return res.status(400).json({ msg: "previewToken is required" });
+
+    const groupId = await groupIdForPreviewToken(token);
+    if (!groupId) {
+      return res.status(404).json({ msg: "This invite has expired or been turned off." });
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ msg: "This invite has expired or been turned off." });
+
+    if (!isGroupMember(group, req.user)) {
+      group.members.push(req.user);
+      await group.save();
+
+      const io = req.app.get("io");
+      if (io) io.to(`group:${group._id}`).emit("group:updated", { groupId: String(group._id) });
+    }
+
+    await group.populate("members", "name email monthlyIncome");
+    res.json(serializeGroup(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

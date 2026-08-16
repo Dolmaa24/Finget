@@ -19,6 +19,7 @@ import { useAuth } from '../context/authStore';
 import { useToast } from '../context/toastStore';
 import { inr } from '../lib/format';
 import { Avatar, Badge, Button, EmptyState, Field, Input, Modal, PageHeader, Panel, SkeletonPanel } from '../components/ui';
+import { TripSettings } from '../components/TripSettings';
 
 const EMOJI_CHOICES = ['👥', '🏖️', '🏠', '✈️', '🍽️', '🎉', '💼', '🚗', '🎓', '💍'];
 
@@ -220,6 +221,9 @@ export const FriendsModePage: React.FC = () => {
                     </span>
                   ))}
                 </div>
+
+                {/* Trip mode + the public share link */}
+                {group.isAdmin && <TripSettings group={group} onChange={reloadGroups} />}
 
                 {/* Invite code */}
                 <div className="glass-well rounded-md p-3.5 flex items-center gap-3 mb-5">

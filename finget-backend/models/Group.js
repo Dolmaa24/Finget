@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { generatePublicToken } = require("../utils/token");
 
 const groupSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -6,7 +7,43 @@ const groupSchema = new mongoose.Schema({
   // Sparse so legacy groups created before invite codes existed don't all
   // collide on a null value.
   inviteCode: { type: String, unique: true, sparse: true, index: true },
+  /**
+   * The PUBLIC share link's token — never the invite code.
+   *
+   * A 6-char code is short enough to enumerate, and a link carrying it hands
+   * anyone who sees it the ability to join. This is 22 opaque characters: it
+   * opens a preview and nothing else, it is revocable, and revoking it does
+   * not kick a single existing member (unlike rotating the invite code).
+   */
+  previewToken: { type: String, unique: true, sparse: true, index: true },
+
   emoji: { type: String, default: "👥" },
+
+  /**
+   * A trip is a group with a clock. Deliberately a field on Group rather than
+   * a parallel entity — splits, settle-up, goals, the activity feed and the
+   * whole scope resolver already work on groups, and forking that for trips
+   * would mean maintaining two of everything forever.
+   */
+  kind: { type: String, enum: ["household", "trip"], default: "household" },
+
+  /** Trip only. Inclusive start, inclusive end, both read as IST calendar days. */
+  startDate: Date,
+  endDate: Date,
+
+  /** What the group agreed to spend on this trip. Integer paise. */
+  potPaise: { type: Number, default: 0, min: 0 },
+
+  /**
+   * Reserved for trips that happen outside India. Every boundary today is
+   * Asia/Kolkata via utils/time.js; this is where a future override lands, and
+   * it is stored now so the field exists before there is data to migrate.
+   */
+  timezone: { type: String, default: "Asia/Kolkata" },
+
+  /** Set once, when the Wrapped recap is generated on endDate + 1. */
+  wrappedGeneratedAt: Date,
+
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   admins: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -42,6 +79,17 @@ groupSchema.statics.generateInviteCode = async function () {
   }
   // Vanishingly unlikely; fall back to a timestamp-derived code.
   return `G${Date.now().toString(36).toUpperCase().slice(-5)}`;
+};
+
+/**
+ * Mint (or re-mint) the public preview token.
+ *
+ * Re-minting kills every link already shared and does NOT touch membership —
+ * that is the whole reason this is separate from `inviteCode`, where rotating
+ * used to be the only revocation available.
+ */
+groupSchema.statics.generatePreviewToken = function () {
+  return generatePublicToken();
 };
 
 module.exports = mongoose.model("Group", groupSchema);

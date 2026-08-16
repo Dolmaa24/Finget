@@ -30,7 +30,15 @@ function describe(card) {
 
     case "wrapped":
       return {
-        title: `${p.emoji || "🧳"} ${p.tripName} — wrapped`,
+        /**
+         * Personalised, because a generic recap does not get shared. Every
+         * member mints their own card and each one leads with their own name —
+         * that is the difference between "here is our trip" and "here is MY
+         * trip", and only the second one gets posted.
+         */
+        title: p.highlightName
+          ? `${p.emoji || "🧳"} ${p.highlightName}'s ${p.tripName} — wrapped`
+          : `${p.emoji || "🧳"} ${p.tripName} — wrapped`,
         description: `${inr(p.totalSpent)} across ${p.days} days and ${p.memberCount} people.`,
       };
 
@@ -70,8 +78,13 @@ function statLine(card) {
       return p.count
         ? `${p.count} ${p.count === 1 ? "decision" : "decisions"}, ${p.period || "this month"}`
         : null;
-    case "wrapped":
+    case "wrapped": {
+      // The viewer's own badge beats a trip-wide fact — it is the line they
+      // will screenshot. Falls back to the category when they earned none.
+      const mine = (p.superlatives || []).find((s) => s.name && s.name === p.highlightName);
+      if (mine) return `${mine.title} · ${mine.detail}`;
       return p.topCategory ? `Most of it went on ${p.topCategory}` : null;
+    }
     case "trip_invite":
       return p.memberCount ? `${p.memberCount} people so far` : null;
     default:

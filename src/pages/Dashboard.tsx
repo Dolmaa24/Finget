@@ -22,6 +22,7 @@ import {
 } from '../hooks/useFinget';
 import { AffordabilityCard } from '../components/AffordabilityCard';
 import { ScenarioSimulator } from '../components/ScenarioSimulator';
+import { TripBurnStrip } from '../components/TripBurnStrip';
 import { GoalsTracker } from '../components/GoalsTracker';
 import { inr, relativeDate } from '../lib/format';
 import { Avatar, Badge, Button, EmptyState, Panel, SkeletonPanel, Stat } from '../components/ui';
@@ -31,7 +32,7 @@ type Preview = { safeDaily: number; remaining: number; risk: RiskLevel } | null;
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
-  const { isFriends, group, bumpRevision } = useScope();
+  const { isFriends, group, groupId, bumpRevision } = useScope();
   const { data: affordability, loading, error } = useAffordability();
   const { data: transactions } = useTransactions();
   const { data: insightData } = useInsights();
@@ -90,6 +91,11 @@ export const Dashboard: React.FC = () => {
             : 'Clear head, safe spending.'}
         </p>
       </header>
+
+      {/* The live trip burn sits above everything: on a trip it is the number
+          the group actually opens the app for. Renders nothing when the active
+          group is not a trip. */}
+      {isFriends && groupId && <TripBurnStrip groupId={groupId} />}
 
       {loading ? (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

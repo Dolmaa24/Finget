@@ -44,6 +44,25 @@ const sharePublicLimiter = rateLimit({
   limit: 300,
 });
 
+/**
+ * Invite-code redemption, per account.
+ *
+ * The 6-char code is 32^6 ≈ 1 billion, which is plenty against a stranger and
+ * not plenty against a script. Since redemption requires a logged-in user,
+ * this caps attempts per ACCOUNT rather than per IP — an attacker would have
+ * to create a new account every twenty guesses, which makes enumeration
+ * pointless rather than merely slow.
+ */
+const inviteCodeLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  keyGenerator: byUser,
+  message: {
+    msg: "Too many invite codes tried. Wait an hour, or ask for the group's share link instead.",
+  },
+});
+
 /** Anything that costs an AI call. */
 const aiLimiter = rateLimit({
   ...common,
@@ -76,6 +95,7 @@ const tokenMintLimiter = rateLimit({
 module.exports = {
   shareCreateLimiter,
   sharePublicLimiter,
+  inviteCodeLimiter,
   aiLimiter,
   translateLimiter,
   tokenMintLimiter,

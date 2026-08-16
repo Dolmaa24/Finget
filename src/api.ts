@@ -475,16 +475,100 @@ export const goalApi = {
 
 /* --------------------------- groups --------------------------- */
 
+export type GroupKind = 'household' | 'trip';
+
 export interface Group {
   _id: string;
   name: string;
   emoji: string;
   inviteCode: string;
+  /** 22-char opaque token for the public share link. Members only. */
+  previewToken: string | null;
   createdAt: string;
   savingsTarget: number;
   emergencyBuffer: number;
+  kind: GroupKind;
+  startDate: string | null;
+  endDate: string | null;
+  pot: number;
+  potPaise: number;
+  timezone: string;
+  wrappedGeneratedAt: string | null;
   isAdmin: boolean;
   members: Member[];
+}
+
+export type PaceStatus = 'under' | 'on' | 'over';
+
+/** Live trip burn. `isTrip: false` for a household group — not an error. */
+export type TripStatus =
+  | { isTrip: false; kind: GroupKind }
+  | {
+      isTrip: true;
+      kind: 'trip';
+      name: string;
+      emoji: string;
+      startDate: string;
+      endDate: string;
+      dayIndex: number;
+      totalDays: number;
+      daysRemaining: number;
+      started: boolean;
+      finished: boolean;
+      spent: number;
+      spentPaise: number;
+      pot: number;
+      potPaise: number;
+      /** Null when no pot is set — there is nothing to be over. */
+      percentSpent: number | null;
+      paceStatus: PaceStatus;
+      dailyAllowance: number;
+      projectedFinal: number;
+      projectedOverspend: number | null;
+      message: string;
+    };
+
+export interface Superlative {
+  title: string;
+  name: string | null;
+  detail: string;
+  memberId: string | null;
+}
+
+export interface Wrapped {
+  tripName: string;
+  emoji: string;
+  days: number;
+  memberCount: number;
+  totalSpent: number;
+  perMember: {
+    memberId: string;
+    name: string;
+    firstName: string;
+    paid: number;
+    share: number;
+    net: number;
+  }[];
+  biggestExpense: { label: string; category: string; amount: number } | null;
+  topCategory: { name: string; amount: number } | null;
+  superlatives: Superlative[];
+  settleUp: { fromName: string; toName: string; amount: number }[];
+  /** One AI sentence on top of facts it cannot change. Null without a key. */
+  oneLiner: string | null;
+  aiEnabled: boolean;
+  viewerId: string;
+}
+
+/** What a stranger holding a trip link sees. Deliberately excludes the total. */
+export interface TripPreview {
+  name: string;
+  emoji: string;
+  kind: GroupKind;
+  startDate: string | null;
+  endDate: string | null;
+  memberCount: number;
+  initials: string[];
+  inviterName: string;
 }
 
 export interface Balance {
@@ -532,21 +616,52 @@ export interface ActivityItem {
   date: string;
 }
 
+export interface TripFields {
+  kind?: GroupKind;
+  startDate?: string | null;
+  endDate?: string | null;
+  potPaise?: number;
+}
+
 export const groupApi = {
   list: () => api<Group[]>('/groups'),
   get: (id: string) => api<Group>(`/groups/${id}`),
 
-  create: (name: string, emoji?: string) =>
-    api<Group>('/groups', { method: 'POST', body: JSON.stringify({ name, emoji }) }),
+  create: (name: string, emoji?: string, trip?: TripFields) =>
+    api<Group>('/groups', { method: 'POST', body: JSON.stringify({ name, emoji, ...trip }) }),
 
   joinByCode: (inviteCode: string) =>
     api<Group>('/groups/join', { method: 'POST', body: JSON.stringify({ inviteCode }) }),
 
-  update: (id: string, body: { name?: string; emoji?: string }) =>
+  /** Finishes the flow the public /join/:previewToken preview began. */
+  joinByToken: (previewToken: string) =>
+    api<Group>('/groups/join-by-token', {
+      method: 'POST',
+      body: JSON.stringify({ previewToken }),
+    }),
+
+  update: (id: string, body: { name?: string; emoji?: string } & TripFields) =>
     api<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
   rotateCode: (id: string) =>
     api<{ inviteCode: string }>(`/groups/${id}/rotate-code`, { method: 'POST' }),
+
+  /** Kills every link already shared. Touches nobody's membership. */
+  rotatePreview: (id: string) =>
+    api<{ previewToken: string }>(`/groups/${id}/rotate-preview`, { method: 'POST' }),
+
+  tripStatus: (id: string) => api<TripStatus>(`/groups/${id}/trip-status`),
+
+  /** `ai=0` skips the model call so the recap renders instantly. */
+  wrapped: (id: string, withAi = true) =>
+    api<Wrapped>(`/groups/${id}/wrapped${withAi ? '' : '?ai=0'}`),
+
+  /** Each member mints their own card, with their own name on it. */
+  shareWrapped: (id: string) =>
+    api<ShareCard>(`/groups/${id}/wrapped/share`, { method: 'POST' }),
+
+  shareInvite: (id: string) =>
+    api<ShareCard & { joinUrl: string }>(`/groups/${id}/invite-card`, { method: 'POST' }),
 
   leave: (id: string) =>
     api<{ msg: string; deleted: boolean }>(`/groups/${id}/leave`, { method: 'POST' }),
@@ -558,6 +673,20 @@ export const groupApi = {
 
   activity: (id: string) => api<ActivityItem[]>(`/groups/${id}/activity`),
 };
+
+/**
+ * The public trip preview. Unauthenticated on purpose — a join flow that
+ * demands a signup before showing what you are joining does not get used.
+ * Bypasses `api()` because that helper always sends an Authorization header.
+ */
+export async function fetchTripPreview(previewToken: string): Promise<TripPreview> {
+  const res = await fetch(`${API_ORIGIN}/join/${encodeURIComponent(previewToken)}.json`);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { msg?: string };
+    throw new ApiError(data.msg || 'This invite has expired or been turned off.', res.status);
+  }
+  return (await res.json()) as TripPreview;
+}
 
 /* --------------------------- ai ------------------------------- */
 

@@ -63,6 +63,13 @@ function createApp() {
    */
   app.use("/s", require("./routes/shareRoutes"));
 
+  /**
+   * The trip preview — the second and last unauthenticated route that returns
+   * user data. Same reasoning as `/s` above: mounted here so it sits ABOVE the
+   * JSON 404 handler.
+   */
+  app.use("/join", require("./routes/joinRoutes"));
+
   app.get("/", (req, res) => res.send("Finget API Running"));
 
   /** Lets the client show an honest "AI not configured" state instead of guessing. */

@@ -57,7 +57,28 @@ Group holds are scope-local, capped at a quarter of group headroom per member so
 indecisive person cannot freeze everyone's number, and releasable by the creator or a
 group admin.
 
-### 6. Context-aware AI coach
+### 6. Trip Mode and Trip Wrapped
+A trip is a group with a clock, not a separate entity — splits, settle-up, goals and the
+activity feed all keep working. Set dates and a pot and the dashboard grows a live burn
+strip: *"Day 2 of 5 · 61% spent · you're running hot."* Pace compares spend progress
+against time progress, so the same 61% reads as running hot on day two and comfortably
+ahead on day four. It updates over the group's existing socket room the moment anyone
+pays for lunch.
+
+**Trip Wrapped** is the recap: totals, who paid versus who owed, the biggest expense, the
+top category, and deterministic superlatives (*Biggest Spender*, *The One Who Always
+Paid*, *Cheapest Day*). Every figure and badge is computed on the server; an optional AI
+sentence sits on top and can change nothing underneath it. Each member mints **their own**
+card with their own name in the headline — a generic recap does not get posted to a group
+chat.
+
+**Joining is frictionless and still private.** The public link carries a 22-char opaque
+token, never the 6-char invite code, and shows the trip name, emoji, dates, member count
+and first initials — deliberately **not the total**, because that is the figure that would
+make a forwarded link worth having. Resetting the link kills every copy already sent and
+removes nobody from the group.
+
+### 7. Context-aware AI coach
 Streams over SSE with persistent per-scope conversation memory. Its figures come from
 the database, not from the client, so the numbers it quotes are always the real ones.
 
@@ -195,6 +216,14 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `GET/DELETE` | `/api/ai/coach/history` | Per-scope conversation |
 | `GET` | `/api/ai/insights` | Rule + AI insights |
 | `GET` | `/api/health` | Status, including `aiEnabled` |
+| `GET` | `/api/groups/:id/trip-status` | **Live trip burn** — day, pace, allowance, projection |
+| `GET` | `/api/groups/:id/wrapped` | Trip recap, with an optional AI one-liner |
+| `POST` | `/api/groups/:id/wrapped/share` | Mint *your own* personalised Wrapped card |
+| `POST` | `/api/groups/:id/invite-card` | The trip as a shareable card |
+| `POST` | `/api/groups/:id/rotate-preview` | New share link; the old one dies, members stay |
+| `POST` | `/api/groups/join-by-token` | Join from a public link, once signed in |
+| `GET` | `/join/:previewToken` | **Public** trip preview (HTML + Open Graph) |
+| `GET` | `/join/:previewToken.json` | The same preview, for the web app |
 | `POST` | `/api/deflections` | **48-hour vault** — ring-fence an amount out of safe-to-spend |
 | `POST` | `/api/deflections/:id/resolve` | Bought, or walked away |
 | `GET` | `/api/deflections/ledger` | Money kept, this month / quarter / all time |
@@ -205,9 +234,12 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `GET` | `/s/:token.png` | **Public** share card image, 1200×630 PNG |
 
 All `/api` routes except signup, login and health require
-`Authorization: Bearer <token>`. `/s/:token` is deliberately public — it is the
-only route that returns user data without authentication, and everything it
-serves has passed the redaction serialiser in `services/shareCardService.js`.
+`Authorization: Bearer <token>`. `/s/:token` and `/join/:previewToken` are
+deliberately public — they are the **only two** routes that return user data
+without authentication. Everything `/s` serves has passed the redaction
+serialiser in `services/shareCardService.js`; everything `/join` serves comes
+from `services/tripPreviewService.js`, which is the single place that decides
+what a stranger may see.
 
 ### Scoped tokens
 
