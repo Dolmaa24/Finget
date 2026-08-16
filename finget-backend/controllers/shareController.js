@@ -1,5 +1,6 @@
 const { readCard } = require("../services/shareCardService");
 const { renderCardPng, RendererUnavailableError } = require("../services/shareRenderer");
+const { describe, statLine, TRUST_LINE } = require("../services/shareCardCopy");
 
 const APP_BASE_URL = process.env.APP_BASE_URL || "http://localhost:5173";
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:5000";
@@ -12,39 +13,6 @@ function esc(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
-
-/** Headline + sub-line per card kind. Payload is already redacted. */
-function describe(card) {
-  const p = card.payload || {};
-  switch (card.kind) {
-    case "translate":
-      return {
-        title: `${inr(p.amount)} = ${p.headline}`,
-        description: "Finget prices things in what they actually cost you.",
-      };
-    case "deflection":
-      return {
-        title: `${inr(p.totalDeflected)} not spent`,
-        description: p.goalName
-          ? `That is ${esc(p.goalName)}, funded.`
-          : "Money kept, on purpose.",
-      };
-    case "wrapped":
-      return {
-        title: `${p.emoji || "🧳"} ${p.tripName} — wrapped`,
-        description: `${inr(p.totalSpent)} across ${p.days} days and ${p.memberCount} people.`,
-      };
-    case "trip_invite":
-      return {
-        title: `${p.emoji || "🧳"} Join ${p.tripName} on Finget`,
-        description: `${p.inviterName} and ${Math.max(0, (p.memberCount || 1) - 1)} others are splitting this trip.`,
-      };
-    default:
-      return { title: "Finget", description: "Know what's safe to spend." };
-  }
 }
 
 function notFoundPage(res) {
@@ -80,6 +48,7 @@ exports.getSharePage = async (req, res) => {
     if (!card) return notFoundPage(res);
 
     const { title, description } = describe(card);
+    const stat = statLine(card);
     const imageUrl = `${API_BASE_URL}/s/${encodeURIComponent(card.token)}.png`;
     const canonical = `${API_BASE_URL}/s/${encodeURIComponent(card.token)}`;
     const p = card.payload || {};
@@ -120,15 +89,19 @@ exports.getSharePage = async (req, res) => {
   p.sub{color:#5f574e;margin:0 0 28px}
   a.cta{display:inline-block;background:#5b54d6;color:#fff;font-weight:600;
         padding:14px 26px;border-radius:999px;text-decoration:none}
+  .stat{display:inline-block;background:rgb(91 84 214 / .1);color:#5b54d6;
+        font-weight:600;font-size:14px;padding:8px 16px;border-radius:999px;
+        margin:0 0 24px}
   footer{margin-top:26px;font-size:13px;color:#8a8177}
 </style></head>
 <body><main class="card">
   <p class="eyebrow">Finget</p>
   <h1>${esc(title)}</h1>
   <p class="sub">${esc(description)}</p>
+  ${stat ? `<p class="stat">${esc(stat)}</p>` : ""}
   ${p.highlightName ? `<p class="sub"><strong>${esc(p.highlightName)}</strong></p>` : ""}
   <a class="cta" href="${esc(APP_BASE_URL)}">See what's safe to spend →</a>
-  <footer>No ads. No selling data. Finget never holds your money.</footer>
+  <footer>${esc(TRUST_LINE)}</footer>
 </main></body></html>`);
   } catch (err) {
     console.error("Share page error:", err.message);

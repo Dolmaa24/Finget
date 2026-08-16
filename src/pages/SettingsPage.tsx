@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { User, PiggyBank, ShieldCheck, Wand2, LogOut, Lock } from 'lucide-react';
-import { authApi, financeApi, type BudgetSettings } from '../api';
+import { Link } from 'react-router-dom';
+import { User, PiggyBank, ShieldCheck, Wand2, LogOut, Lock, Puzzle, Trash2 } from 'lucide-react';
+import { authApi, financeApi, tokenApi, type ApiToken, type BudgetSettings } from '../api';
 import { useAuth } from '../context/authStore';
 import { useScope } from '../context/scopeStore';
 import { useToast } from '../context/toastStore';
@@ -36,6 +37,9 @@ export const SettingsPage: React.FC = () => {
   const [auto, setAuto] = useState<AutoBudget | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [tokens, setTokens] = useState<ApiToken[]>([]);
+  const [revoking, setRevoking] = useState<string | null>(null);
+
   useEffect(() => {
     setName(user?.name || '');
     setIncome(user?.monthlyIncome ? String(user.monthlyIncome) : '');
@@ -64,6 +68,35 @@ export const SettingsPage: React.FC = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context, groupId]);
+
+  /**
+   * Connected apps are personal, not scoped — a token belongs to the person,
+   * not to whichever group they happen to be viewing. So this loads once
+   * rather than on every scope change.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    tokenApi
+      .list()
+      .then((list) => !cancelled && setTokens(list))
+      .catch(() => !cancelled && setTokens([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const revokeToken = async (id: string) => {
+    setRevoking(id);
+    try {
+      await tokenApi.revoke(id);
+      setTokens((prev) => prev.filter((t) => t._id !== id));
+      toast('Disconnected. That key stops working immediately.', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not disconnect.', 'error');
+    } finally {
+      setRevoking(null);
+    }
+  };
 
   const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,6 +272,57 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
             </form>
+          )}
+        </Panel>
+
+        {/* Connected apps */}
+        <Panel className="lg:col-span-2">
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <span className="w-9 h-9 rounded-md bg-[var(--accent-wash)] text-accent flex items-center justify-center">
+              <Puzzle className="w-[18px] h-[18px]" />
+            </span>
+            <h2 className="font-semibold text-ink">Connected apps</h2>
+          </div>
+          <p className="text-[13px] text-ink-2 mb-6 leading-relaxed">
+            Keys you've given to Finget's browser extension. Each one can only ask what a
+            price means for your goals — it cannot read your transactions, goals or groups.
+          </p>
+
+          {tokens.length === 0 ? (
+            <div className="glass-well rounded-md p-4 flex items-center justify-between flex-wrap gap-3">
+              <p className="text-[13px] text-ink-3">Nothing connected yet.</p>
+              <Link to="/extension/connect">
+                <Button variant="glass">Connect the extension</Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {tokens.map((t) => (
+                <div
+                  key={t._id}
+                  className="glass-well rounded-md px-4 py-3 flex items-center justify-between gap-3 flex-wrap"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] font-semibold text-ink truncate">{t.name}</p>
+                    <p className="text-[12px] text-ink-3">
+                      <span className="font-mono">{t.prefix}…</span>
+                      {' · '}
+                      {t.lastUsedAt
+                        ? `last used ${new Date(t.lastUsedAt).toLocaleDateString('en-IN')}`
+                        : 'never used'}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    loading={revoking === t._id}
+                    onClick={() => revokeToken(t._id)}
+                    icon={<Trash2 className="w-4 h-4" />}
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
         </Panel>
 

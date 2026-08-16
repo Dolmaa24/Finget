@@ -9,6 +9,7 @@ import { SplitPage } from './pages/SplitPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { FutureImpactPage } from './pages/FutureImpactPage';
+import { ExtensionConnectPage } from './pages/ExtensionConnectPage';
 import { AppShell } from './components/AppShell';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/authStore';
@@ -32,6 +33,9 @@ function AppRoutes() {
         <Route path="/coach" element={<AiCoachPage />} />
         <Route path="/friends" element={<FriendsModePage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        {/* The extension opens this. Signed-out users land on the landing page
+            and arrive back here after logging in, same as any other route. */}
+        <Route path="/extension/connect" element={<ExtensionConnectPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to={token ? '/dashboard' : '/'} replace />} />

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Finget chip harness</title>
+    <style>
+      /* Deliberately hostile host-page CSS: this is the point of the harness.
+         If the chip inherits any of it, the shadow-DOM isolation is broken. */
+      * { font-family: "Comic Sans MS", cursive; }
+      span { color: #cc0000 !important; font-size: 9px; line-height: 0.7; }
+      button { background: #ff0 !important; border: 3px dashed red !important; }
+
+      body { margin: 0; padding: 32px; background: #fff; color: #111; }
+      .product { max-width: 720px; margin: 0 auto 48px; }
+      .price-block { padding: 12px 0; }
+      .a-price-whole { font-size: 28px !important; color: #0F1111 !important; font-weight: 600; }
+      h2 { font-family: system-ui, sans-serif; font-size: 15px; color: #666; margin: 40px 0 4px; }
+      .title { font-family: system-ui, sans-serif; font-size: 22px; margin: 0 0 8px; }
+    </style>
+  </head>
+  <body>
+    <h2>Host page CSS is hostile on purpose — Comic Sans, red 9px spans, yellow buttons.</h2>
+
+    <div class="product">
+      <p class="title">Sony WH-1000XM5 Wireless Headphones</p>
+      <div class="price-block" id="anchor-safe">
+        <span class="a-price-whole">₹8,499</span>
+      </div>
+    </div>
+
+    <div class="product">
+      <p class="title">MacBook Air 15" M4</p>
+      <div class="price-block" id="anchor-warning">
+        <span class="a-price-whole">₹1,29,999</span>
+      </div>
+    </div>
+
+    <div class="product">
+      <p class="title">Dyson Airwrap</p>
+      <div class="price-block" id="anchor-risky">
+        <span class="a-price-whole">₹45,900</span>
+      </div>
+    </div>
+
+    <div class="product">
+      <p class="title">Long goal name, to check wrapping</p>
+      <div class="price-block" id="anchor-long">
+        <span class="a-price-whole">₹22,000</span>
+      </div>
+    </div>
+
+    <script type="module" src="./harness.ts"></script>
+  </body>
+</html>

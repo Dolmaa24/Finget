@@ -289,17 +289,28 @@ describe("public share routes", () => {
     expect((await request(app).get(`/s/${expired.token}`)).status).toBe(404);
   });
 
-  it("501s on the image route until the Milestone 1 renderer lands", async () => {
+  it("serves a real PNG on the image route", async () => {
     const user = await makeUser("Dolma", "dolma@test.com");
     const card = await createCard({
       kind: "translate",
       ownerId: user.id,
-      payload: { amount: 100, headline: "₹100", headlineKind: "rupees" },
+      payload: {
+        amount: 8499,
+        headline: "6 days of your Goa trip",
+        headlineKind: "goal_delay",
+        riskAfter: "Safe",
+      },
     });
+
     const res = await request(app).get(`/s/${card.token}.png`);
-    expect(res.status).toBe(501);
-    expect(res.body.msg).toMatch(/Milestone 1/);
-  });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/image\/png/);
+    // PNG magic number, so a JSON error body cannot pass this by being bytes.
+    expect(res.body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+    // The spec's budget: a card has to survive being sent over WhatsApp.
+    expect(res.body.length).toBeLessThan(100 * 1024);
+  }, 30000);
 
   it("refuses to store a payload that leaks identity", async () => {
     const user = await makeUser("Dolma", "dolma@test.com");

@@ -1,0 +1,20 @@
+{
+  "name": "finget-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Finget's price translator for Indian retail sites. Standalone package — install and build it separately from the web app.",
+  "scripts": {
+    "build": "tsc --noEmit && vite build && vite build --config vite.content.config.ts && vite build --config vite.connect.config.ts",
+    "harness": "vite --config vite.harness.config.ts",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "happy-dom": "^15.11.7",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7",
+    "vitest": "^4.1.10"
+  }
+}

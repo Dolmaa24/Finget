@@ -129,6 +129,30 @@ The app is at `http://localhost:5173`, the API at `http://localhost:5000`.
 > **Note:** `finget-backend/.env` is git-ignored. It was previously committed; if you
 > are pulling an old clone, rotate any secret that was in it.
 
+### Browser extension
+
+`extension/` is a **standalone package** with its own install and its own
+release cadence (Chrome Web Store review), so it is deliberately not part of the
+root install:
+
+```bash
+npm --prefix extension install && npm --prefix extension run build
+```
+
+Load `extension/dist` at `chrome://extensions` → Developer mode → *Load
+unpacked*, then open **Settings → Connected apps → Connect the extension** in
+the web app. The connect page hands the key over automatically when the
+extension is installed, and falls back to a copyable key when it is not.
+
+To iterate on the chip without loading it into Chrome or visiting a retailer:
+
+```bash
+npm --prefix extension run harness
+```
+
+That serves `harness/index.html` — the real `renderChip` against deliberately
+hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
+
 ---
 
 ## 🔌 API
@@ -159,13 +183,36 @@ The app is at `http://localhost:5173`, the API at `http://localhost:5000`.
 | `GET/DELETE` | `/api/ai/coach/history` | Per-scope conversation |
 | `GET` | `/api/ai/insights` | Rule + AI insights |
 | `GET` | `/api/health` | Status, including `aiEnabled` |
+| `POST/GET/DELETE` | `/api/tokens` | Scoped extension credentials — mint, list, revoke |
+| `POST/GET/DELETE` | `/api/share` | Mint, list and revoke share cards |
 | `GET` | `/s/:token` | **Public** share card page (HTML + Open Graph) |
-| `GET` | `/s/:token.png` | Share card image — `501` until Milestone 1 |
+| `GET` | `/s/:token.png` | **Public** share card image, 1200×630 PNG |
 
 All `/api` routes except signup, login and health require
 `Authorization: Bearer <token>`. `/s/:token` is deliberately public — it is the
 only route that returns user data without authentication, and everything it
 serves has passed the redaction serialiser in `services/shareCardService.js`.
+
+### Scoped tokens
+
+`POST /api/tokens` mints a `fgt_`-prefixed credential for the browser
+extension. It is **not** the app's JWT: it reaches `POST /api/finance/translate`
+and nothing else, it is stored as a SHA-256 hash so a database dump yields
+nothing usable, and it is revocable from Settings without signing the user out
+anywhere else. Only the app JWT can mint one, so a leaked extension token
+cannot mint itself a replacement.
+
+### Share card images
+
+`/s/:token.png` renders through satori → `@resvg/resvg-js` with a bundled Inter
+subset. Both are **optional at runtime**: if the native prebuild is missing on
+the host, the `.png` route returns `501` and `/s/:token` keeps serving the HTML
+card with its Open Graph text. A link that loses its image is degraded; a link
+that 500s is broken.
+
+Inter's `latin` subset has no `₹` (U+20B9), so `latin-ext` is loaded as a named
+fallback at every weight. Dropping it to save ~140 KB makes every card read
+`□8,499`, and nothing throws.
 
 ---
 

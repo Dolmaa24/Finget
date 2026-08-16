@@ -60,4 +60,24 @@ const translateLimiter = rateLimit({
   keyGenerator: byUser,
 });
 
-module.exports = { shareCreateLimiter, sharePublicLimiter, aiLimiter, translateLimiter, byUser };
+/**
+ * Minting API tokens. Deliberately tight: a legitimate user connects the
+ * extension once, maybe twice. A burst means either a loop in the connect page
+ * or someone with a stolen JWT stocking up on credentials that survive a
+ * password change.
+ */
+const tokenMintLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  keyGenerator: byUser,
+});
+
+module.exports = {
+  shareCreateLimiter,
+  sharePublicLimiter,
+  aiLimiter,
+  translateLimiter,
+  tokenMintLimiter,
+  byUser,
+};

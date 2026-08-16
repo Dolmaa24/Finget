@@ -22,7 +22,24 @@ function createApp() {
         // top-level browser navigations to /s/:token, which is a public page
         // rather than a cross-origin XHR. See the /s mount below.
         if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error(`Origin ${origin} not allowed by CORS`));
+
+        /**
+         * The browser extension's service worker. Its requests already bypass
+         * CORS via `host_permissions`, so refusing the header here would not
+         * stop anything — it would only make the response confusing. The real
+         * gate is the scoped `fgt_` token, which reaches exactly one endpoint.
+         */
+        if (origin.startsWith("chrome-extension://") || origin.startsWith("moz-extension://")) {
+          return callback(null, true);
+        }
+
+        /**
+         * Unknown origin: send no CORS headers and let the browser refuse the
+         * response, which is what CORS is for. Throwing here instead would
+         * turn a routine cross-origin probe into a 500 from our own error
+         * handler, and would mask genuine server faults in the logs.
+         */
+        return callback(null, false);
       },
     })
   );
@@ -35,6 +52,8 @@ function createApp() {
   app.use("/api/goals", require("./routes/goalRoutes"));
   app.use("/api/groups", require("./routes/groupRoutes"));
   app.use("/api/receipts", require("./routes/receiptRoutes"));
+  app.use("/api/tokens", require("./routes/apiTokenRoutes"));
+  app.use("/api/share", require("./routes/shareCardRoutes"));
 
   /**
    * Public share cards — HTML, not JSON, and intentionally unauthenticated.

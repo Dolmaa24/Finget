@@ -227,6 +227,66 @@ export const financeApi = {
     }),
 };
 
+/* ------------------------ api tokens -------------------------- */
+
+/** A scoped credential held by something that is not the web app. */
+export interface ApiToken {
+  _id: string;
+  name: string;
+  scope: 'translate';
+  /** e.g. "fgt_A1b2C3" — enough to tell two apart, not enough to use. */
+  prefix: string;
+  lastUsedAt?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export const tokenApi = {
+  list: () => api<ApiToken[]>('/tokens'),
+
+  /**
+   * The plaintext token comes back exactly once, here. It is never stored by
+   * the app and cannot be re-read — losing it means minting a new one.
+   */
+  create: (name?: string) =>
+    api<{ token: string; apiToken: ApiToken }>('/tokens', {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'translate', name }),
+    }),
+
+  revoke: (id: string) => api<{ msg: string }>(`/tokens/${id}`, { method: 'DELETE' }),
+};
+
+/* -------------------------- share ----------------------------- */
+
+export type ShareKind = 'translate' | 'deflection' | 'wrapped' | 'trip_invite';
+
+export interface ShareCard {
+  token: string;
+  kind: ShareKind;
+  url: string;
+  /** Null when the server cannot rasterise — hide the preview, keep the link. */
+  imageUrl: string | null;
+  payload: Record<string, unknown>;
+  expiresAt: string;
+}
+
+export const shareApi = {
+  /**
+   * Sends an intent, not a payload: the server recomputes the figures and
+   * builds the card itself, so nothing unredacted can be smuggled in.
+   */
+  createTranslate: (scope: ScopeRef, amountPaise: number) =>
+    api<ShareCard>('/share', {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'translate', amountPaise, ...scopeBody(scope) }),
+    }),
+
+  list: () => api<ShareCard[]>('/share'),
+
+  revoke: (token: string) => api<{ msg: string }>(`/share/${token}`, { method: 'DELETE' }),
+};
+
 /* ------------------------ transactions ------------------------ */
 
 export interface Member {
