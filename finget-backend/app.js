@@ -66,6 +66,26 @@ function createApp() {
     require("./routes/whatsappRoutes")
   );
 
+  /**
+   * The payment webhook, mounted above the global JSON parser for exactly the
+   * same reason as the WhatsApp one: Razorpay signs the RAW bytes, and Express's
+   * parser keeps only the parsed object. Re-serialising it produces different
+   * bytes and every signature would fail.
+   *
+   * This one grants paid entitlements, so the raw-body handling is not a detail
+   * — it is the whole authentication story for the endpoint.
+   */
+  app.use(
+    "/api/payments",
+    express.json({
+      limit: "256kb",
+      verify: (req, res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+    require("./routes/paymentRoutes")
+  );
+
   app.use(express.json({ limit: "1mb" }));
 
   app.use("/api/auth", require("./routes/authRoutes"));

@@ -122,7 +122,23 @@ const phoneLinkLimiter = rateLimit({
   },
 });
 
+/**
+ * Opening a payment order.
+ *
+ * Each call is a real request to Razorpay and a real row in our database. A
+ * legitimate person opens a handful while deciding; a burst means either a loop
+ * in the checkout page or someone filling the orders table for free.
+ */
+const paymentOrderLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  keyGenerator: byUser,
+  message: { msg: "Too many payment attempts. Wait a few minutes and try again." },
+});
+
 module.exports = {
+  paymentOrderLimiter,
   phoneLinkLimiter,
   shareCreateLimiter,
   sharePublicLimiter,
