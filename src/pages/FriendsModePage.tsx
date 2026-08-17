@@ -17,9 +17,9 @@ import { groupApi, type Group } from '../api';
 import { useScope } from '../context/scopeStore';
 import { useAuth } from '../context/authStore';
 import { useToast } from '../context/toastStore';
-import { inr } from '../lib/format';
 import { Avatar, Badge, Button, EmptyState, Field, Input, Modal, PageHeader, Panel, SkeletonPanel } from '../components/ui';
 import { TripSettings } from '../components/TripSettings';
+import { GroupSplitSettings } from '../components/GroupSplitSettings';
 
 const EMOJI_CHOICES = ['👥', '🏖️', '🏠', '✈️', '🍽️', '🎉', '💼', '🚗', '🎓', '💍'];
 
@@ -116,7 +116,7 @@ export const FriendsModePage: React.FC = () => {
       <PageHeader
         eyebrow="Friends mode"
         title="Groups"
-        subtitle="A group is a shared wallet: pooled income, shared goals, split expenses and one settle-up sheet."
+        subtitle="A group is a shared wallet: shared goals, split expenses and one settle-up sheet. Income is pooled only for the members who choose to share it."
         actions={
           <>
             <Button variant="glass" icon={<UserPlus className="w-4 h-4" />} onClick={() => setJoinOpen(true)}>
@@ -179,7 +179,6 @@ export const FriendsModePage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 stagger">
           {groups.map((group) => {
             const active = context === 'group' && groupId === group._id;
-            const pooled = group.members.reduce((s, m) => s + (m.monthlyIncome || 0), 0);
 
             return (
               <div
@@ -199,9 +198,16 @@ export const FriendsModePage: React.FC = () => {
                         <Badge icon={<Crown className="w-3 h-3" />}>Admin</Badge>
                       )}
                     </div>
-                    <p className="text-[12.5px] text-ink-3 mt-0.5 numeric">
-                      {group.members.length} member{group.members.length === 1 ? '' : 's'} ·{' '}
-                      {inr(pooled)} pooled income
+                    {/*
+                      This line used to read "₹X pooled income", summing every
+                      member's salary. In a two-person group that is one
+                      subtraction away from the other person's exact income, so
+                      the server stopped sending the figures and the line now
+                      says something a co-member is actually entitled to know.
+                    */}
+                    <p className="text-[12.5px] text-ink-3 mt-0.5">
+                      {group.members.length} member{group.members.length === 1 ? '' : 's'} · splits{' '}
+                      {group.splitMode === 'weighted' ? 'by income' : 'equally'}
                     </p>
                   </div>
                 </div>
@@ -221,6 +227,9 @@ export const FriendsModePage: React.FC = () => {
                     </span>
                   ))}
                 </div>
+
+                {/* Split mode, income sharing and the Silent Collector */}
+                <GroupSplitSettings group={group} onChange={reloadGroups} />
 
                 {/* Trip mode + the public share link */}
                 {group.isAdmin && <TripSettings group={group} onChange={reloadGroups} />}

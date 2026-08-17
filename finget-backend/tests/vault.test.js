@@ -199,9 +199,19 @@ describe("group holds", () => {
     return (await request(app).post("/api/groups").set("Authorization", auth).send({ name })).body;
   }
 
+  /** Income sharing is what gives a group a pooled figure to have headroom in. */
+  async function shareIncome(auth, groupId) {
+    const res = await request(app)
+      .post(`/api/groups/${groupId}/income-sharing`)
+      .set("Authorization", auth)
+      .send({ optIn: true });
+    expect(res.status).toBe(200);
+  }
+
   it("caps a single member at a quarter of group headroom", async () => {
     const admin = await makeUser("Dolma", "dolma@test.com", 100000);
     const group = await groupWith(admin.auth);
+    await shareIncome(admin.auth, group._id);
 
     const headroom = (await affordability(admin.auth, `?context=group&groupId=${group._id}`))
       .remaining;
@@ -226,6 +236,21 @@ describe("group holds", () => {
 
     expect(over.status).toBe(409);
     expect(over.body.msg).toMatch(/quarter of the group/i);
+  });
+
+  it("does not cap a group that has published no income at all", async () => {
+    const admin = await makeUser("Dolma", "dolma@test.com", 100000);
+    const group = await groupWith(admin.auth);
+    // Nobody opted into income sharing, so the group's pooled income is 0 —
+    // it has told Finget nothing, which is not the same as being broke. The
+    // quarter-of-headroom cap protects a shared number that does not exist
+    // here, so it must not fire and lock the feature out entirely.
+    const res = await request(app)
+      .post("/api/deflections")
+      .set("Authorization", admin.auth)
+      .send({ label: "Laptop", amountPaise: 5000000, context: "group", groupId: group._id });
+
+    expect(res.status).toBe(201);
   });
 
   it("lets a group admin release someone else's hold", async () => {

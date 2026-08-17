@@ -3,7 +3,7 @@ const Settings = require("../models/Settings");
 const User = require("../models/User");
 const Group = require("../models/Group");
 const Goal = require("../models/Goal");
-const { isGroupMember } = require("../utils/groupAuth");
+const { isGroupMember, idOf } = require("../utils/groupAuth");
 
 class ScopeError extends Error {
   constructor(status, msg) {
@@ -51,10 +51,25 @@ async function resolveScopeWithoutHolds({ userId, context, groupId }) {
       throw new ScopeError(403, "Not authorized for this group");
     }
 
-    const pooledIncome = group.members.reduce(
-      (sum, m) => sum + (m.monthlyIncome || 0),
-      0
-    );
+    /**
+     * Pooled income, from CONSENTING MEMBERS ONLY.
+     *
+     * This used to sum every member's salary unconditionally, and the group
+     * dashboard printed the total as "₹2,40,000 pooled". In a two-person group
+     * that is one subtraction away from the other person's exact income — you
+     * know your own figure, so the total tells you theirs. Milestone 5 says an
+     * income must never be exposed to another member, and a total that
+     * arithmetic reverses is an exposure.
+     *
+     * So pooling is gated on the same per-group consent that drives weighted
+     * splits: contributing your income to a shared number IS sharing your
+     * income, and the two cannot honestly have different switches. Members who
+     * have not opted in contribute nothing, and the payload says how many
+     * people the figure actually covers so the UI can never imply otherwise.
+     */
+    const optedIn = new Set((group.incomeSharing || []).map((entry) => idOf(entry.userId)));
+    const contributors = group.members.filter((m) => optedIn.has(idOf(m)));
+    const pooledIncome = contributors.reduce((sum, m) => sum + (m.monthlyIncome || 0), 0);
 
     const transactions = await Transaction.find({ groupId }).sort({ date: -1 });
 
@@ -62,6 +77,9 @@ async function resolveScopeWithoutHolds({ userId, context, groupId }) {
       isGroup: true,
       group,
       owner: { monthlyIncome: pooledIncome, name: group.name },
+      /** How many of `memberCount` actually contributed to the pooled figure. */
+      incomeContributors: contributors.length,
+      memberCount: group.members.length,
       transactions,
       settings: {
         savingsTarget: group.savingsTarget || 0,

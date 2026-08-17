@@ -27,6 +27,12 @@ exports.getAffordability = async (req, res) => {
       ...result,
       scope: scope.isGroup ? "group" : "user",
       memberCount: scope.isGroup ? scope.group.members.length : 1,
+      /**
+       * How many members' incomes the pooled figure actually covers. The UI
+       * has to say this: a total labelled as the whole group's, when it is
+       * really one person's, is worse than showing nothing.
+       */
+      incomeContributors: scope.isGroup ? scope.incomeContributors : 1,
     });
   } catch (err) {
     handleScopeError(err, res);

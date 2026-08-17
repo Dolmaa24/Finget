@@ -81,6 +81,7 @@ const EMPTY_AFFORDABILITY: Affordability = {
   remaining: 0,
   risk: 'Safe',
   income: 0,
+  incomeContributors: 0,
   baseIncome: 0,
   extraIncome: 0,
   expenses: 0,

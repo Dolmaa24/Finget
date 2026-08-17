@@ -73,7 +73,11 @@ export interface Profile {
   _id: string;
   name: string;
   email: string;
+  /** Yours. Never present for anyone else — see `Member`. */
   monthlyIncome: number;
+  /** Optional UPI handle, used only to build a pay link on your reminders. */
+  upiId: string;
+  reminderPrefs: { mutedAll: boolean; mutedGroups: string[] };
 }
 
 export const authApi = {
@@ -88,8 +92,13 @@ export const authApi = {
       body: JSON.stringify(body),
     }),
   me: () => api<Profile>('/auth/me'),
-  updateMe: (body: { name?: string; monthlyIncome?: number }) =>
-    api<Profile>('/auth/me', { method: 'PUT', body: JSON.stringify(body) }),
+  updateMe: (body: {
+    name?: string;
+    monthlyIncome?: number;
+    /** Pass '' to clear it. */
+    upiId?: string;
+    mutedAll?: boolean;
+  }) => api<Profile>('/auth/me', { method: 'PUT', body: JSON.stringify(body) }),
 };
 
 /* -------------------------- finance --------------------------- */
@@ -113,6 +122,13 @@ export interface Affordability {
   monthlyBurnRate: number;
   scope: Scope;
   memberCount: number;
+  /**
+   * How many members' incomes `income` actually covers in group scope.
+   * Pooling is gated on the same per-group consent as weighted splits — a
+   * pooled total over everyone is one subtraction away from a co-member's
+   * exact salary.
+   */
+  incomeContributors: number;
 }
 
 export interface GoalImpact {
@@ -448,8 +464,15 @@ export interface Member {
   _id: string;
   name: string;
   email?: string;
-  monthlyIncome?: number;
   isAdmin?: boolean;
+  /** Whether they consented to income weighting in this group. Never an amount. */
+  sharesIncome?: boolean;
+  /**
+   * Present ONLY on your own row. The server omits every other member's income
+   * from group payloads — a "pooled income" total in a two-person group is a
+   * subtraction away from the other person's salary.
+   */
+  monthlyIncome?: number;
 }
 
 export interface Split {
@@ -484,7 +507,7 @@ export interface NewTransaction {
   note?: string;
   date?: string;
   paidBy?: string;
-  splitMode?: 'equal' | 'custom' | 'none';
+  splitMode?: SplitMode | 'custom' | 'none';
   splits?: { userId: string; amount: number }[];
   splitWith?: string[];
 }
@@ -545,6 +568,9 @@ export const goalApi = {
 
 export type GroupKind = 'household' | 'trip';
 
+/** How an expense is divided. 'custom' and 'none' are per-expense, never defaults. */
+export type SplitMode = 'equal' | 'weighted';
+
 export interface Group {
   _id: string;
   name: string;
@@ -564,6 +590,26 @@ export interface Group {
   wrappedGeneratedAt: string | null;
   isAdmin: boolean;
   members: Member[];
+
+  /** What the Add sheet reaches for first. A default, never a lock. */
+  splitMode: SplitMode;
+  /** The group-wide Silent Collector switch. Admin-controlled. */
+  remindersEnabled: boolean;
+  /** How many members consented to income weighting — a count, never amounts. */
+  incomeSharingCount: number;
+  /** Your own consent, so a toggle can render its true state. */
+  incomeSharingOptedIn: boolean;
+}
+
+export interface SplitPreview {
+  mode: SplitMode;
+  /** True when 'weighted' was asked for but nobody has consented yet. */
+  degradedToEqual: boolean;
+  consentingCount: number;
+  shares: { userId: string; name: string; amount: number; amountPaise: number }[];
+  yourShare: number | null;
+  /** About YOUR share only. The API never compares two other people. */
+  relativeLabel: 'larger' | 'smaller' | 'even' | null;
 }
 
 export type PaceStatus = 'under' | 'on' | 'over';
@@ -621,6 +667,7 @@ export interface Wrapped {
   topCategory: { name: string; amount: number } | null;
   superlatives: Superlative[];
   settleUp: { fromName: string; toName: string; amount: number }[];
+
   /** One AI sentence on top of facts it cannot change. Null without a key. */
   oneLiner: string | null;
   aiEnabled: boolean;
@@ -651,6 +698,13 @@ export interface Transfer {
   fromName: string;
   toName: string;
   amount: number;
+  /**
+   * Present only on YOUR outgoing transfer, and only when the person you owe
+   * has published a UPI handle. Opening it hands off to your own UPI app —
+   * Finget never holds or moves the money, and this debt stays open until
+   * someone records the settlement below.
+   */
+  payIntent: string | null;
 }
 
 export interface BalanceSheet {
@@ -708,8 +762,35 @@ export const groupApi = {
       body: JSON.stringify({ previewToken }),
     }),
 
-  update: (id: string, body: { name?: string; emoji?: string } & TripFields) =>
-    api<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      emoji?: string;
+      splitMode?: SplitMode;
+      remindersEnabled?: boolean;
+    } & TripFields
+  ) => api<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Acts only on the caller. Nobody can opt anyone else's income in. */
+  setIncomeSharing: (id: string, optIn: boolean) =>
+    api<Group>(`/groups/${id}/income-sharing`, {
+      method: 'POST',
+      body: JSON.stringify({ optIn }),
+    }),
+
+  splitPreview: (id: string, amount: number, mode: SplitMode, participants?: string[]) => {
+    const query = new URLSearchParams({ amount: String(amount), mode });
+    if (participants?.length) query.set('participants', participants.join(','));
+    return api<SplitPreview>(`/groups/${id}/split-preview?${query.toString()}`);
+  },
+
+  /** The debtor's own off switch, distinct from the admin's group-wide one. */
+  muteReminders: (id: string, muted: boolean) =>
+    api<{ groupId: string; muted: boolean }>(`/groups/${id}/mute-reminders`, {
+      method: 'POST',
+      body: JSON.stringify({ muted }),
+    }),
 
   rotateCode: (id: string) =>
     api<{ inviteCode: string }>(`/groups/${id}/rotate-code`, { method: 'POST' }),
@@ -740,6 +821,38 @@ export const groupApi = {
     api(`/groups/${id}/settle`, { method: 'POST', body: JSON.stringify(body) }),
 
   activity: (id: string) => api<ActivityItem[]>(`/groups/${id}/activity`),
+};
+
+/* ----------------------- notifications ------------------------ */
+
+export interface Notification {
+  _id: string;
+  kind: 'reminder' | 'settlement' | 'wrapped' | 'system';
+  title: string;
+  body: string;
+  href: string | null;
+  groupId: string | null;
+  amount: number | null;
+  amountPaise: number | null;
+  /**
+   * A `upi://pay` intent, when the person you owe has published a handle.
+   * Opening it hands off to your own UPI app — Finget never touches the money,
+   * and the debt is only marked settled when someone confirms it happened.
+   */
+  payIntent: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export const notificationApi = {
+  list: () => api<{ notifications: Notification[]; unreadCount: number }>('/notifications'),
+
+  /** Omit `ids` to mark everything read. */
+  markRead: (ids?: string[]) =>
+    api<{ marked: number }>('/notifications/read', {
+      method: 'POST',
+      body: JSON.stringify(ids?.length ? { ids } : {}),
+    }),
 };
 
 /**

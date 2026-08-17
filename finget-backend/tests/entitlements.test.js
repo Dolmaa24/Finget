@@ -10,6 +10,22 @@ const plainGroup = { entitlement: { tripPass: false } };
 
 const allCapabilities = Object.values(CAPABILITIES);
 
+/**
+ * This is the only file that turns the paywall ON, and `process.env` is shared
+ * by every test file in the run. A `PAYWALL_ENABLED=true` that escaped this
+ * file would not fail here — it would fail somewhere else entirely, as a
+ * mystery 403 from an integration suite that never mentions entitlements.
+ *
+ * The per-describe hooks below already restore it; this is the backstop for
+ * the case where one of them does not get to run.
+ */
+const PAYWALL_BEFORE = process.env.PAYWALL_ENABLED;
+
+afterAll(() => {
+  if (PAYWALL_BEFORE === undefined) delete process.env.PAYWALL_ENABLED;
+  else process.env.PAYWALL_ENABLED = PAYWALL_BEFORE;
+});
+
 describe("with the paywall disabled (Milestones 0–7)", () => {
   beforeEach(() => {
     process.env.PAYWALL_ENABLED = "false";

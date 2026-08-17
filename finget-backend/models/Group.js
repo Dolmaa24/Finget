@@ -47,6 +47,46 @@ const groupSchema = new mongoose.Schema({
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   admins: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+  /**
+   * What the Add-expense sheet reaches for first. A group that has agreed to
+   * weight by income should not have to re-pick it forty times a trip.
+   *
+   * This is a default, never a lock: any single expense can still be split
+   * equally or custom, and a `weighted` default silently degrades to equal
+   * when nobody in the group has opted their income in.
+   */
+  splitDefaults: {
+    mode: { type: String, enum: ["equal", "weighted"], default: "equal" },
+  },
+
+  /**
+   * Who has consented to income weighting IN THIS GROUP.
+   *
+   * Consent is per-group and never global: agreeing to weight by income among
+   * three flatmates says nothing about wanting it with twelve colleagues. An
+   * absent entry means opted out, so the safe state is also the default state
+   * and a migration adds nobody.
+   *
+   * The income itself is NEVER stored here — only the fact of consent. Weights
+   * are read live from the User doc at split time so someone who updates their
+   * income does not leave a stale copy behind in every group they are in.
+   */
+  incomeSharing: [
+    {
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+      optedInAt: { type: Date, default: Date.now },
+    },
+  ],
+
+  /**
+   * The Silent Collector, per group. An admin can switch off reminders for
+   * everyone here; an individual can additionally mute themselves on their own
+   * User doc. Either switch being off is enough to stop a send.
+   */
+  reminders: {
+    enabled: { type: Boolean, default: true },
+  },
   /** Shared-wallet equivalents of the personal Settings doc. */
   savingsTarget: { type: Number, default: 0 },
   emergencyBuffer: { type: Number, default: 0 },

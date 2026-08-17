@@ -11,7 +11,13 @@ const transactionSchema = new mongoose.Schema({
   note: String,
   type: { type: String, enum: ["expense", "income"], default: "expense" },
   date: { type: Date, default: Date.now },
-  /** "equal" | "custom" | "none" — how `splits` was derived. */
+  /**
+   * "equal" | "weighted" | "custom" | "none" — how `splits` was derived.
+   *
+   * Records what actually happened, not what was asked for: a `weighted`
+   * request in a group where nobody has opted their income in produces an
+   * equal split, and is stored as `equal`.
+   */
   splitMode: { type: String, default: "none" },
 
   /**

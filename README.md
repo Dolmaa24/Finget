@@ -8,7 +8,7 @@ It works in two modes, and the switch re-scopes the entire application:
 
 | | **Personal mode** | **Friends mode** |
 |---|---|---|
-| Income | Yours | Pooled across members |
+| Income | Yours | Pooled across the members who opt in |
 | Ledger | Your transactions | Shared, with the payer recorded |
 | Goals | Private | Shared, with per-member contributions |
 | Extra | — | Splits, settle-up, activity feed |
@@ -29,8 +29,17 @@ it hurts most.
 
 ### 3. Friends mode: a genuinely shared wallet
 - **Invite codes** — six characters, rotatable. Nobody joins by pasting a raw database id.
-- **Splits** — equal (with per-person include/exclude) or custom amounts that must
-  reconcile to the total. Remainders are distributed in paise so parts always sum exactly.
+- **Splits** — equal (with per-person include/exclude), **income-weighted**, or custom
+  amounts that must reconcile to the total. Remainders are distributed in paise so parts
+  always sum exactly, whichever mode is used.
+- **Income stays private** — weighting is opt-in *per group*, and no member's income is
+  ever sent to another. Not as a field, and not as a pooled total either: a group-wide
+  sum is one subtraction away from a co-member's exact salary in a two-person group, so
+  pooling counts only the people who opted in and the UI always says how many that is.
+  A member who opts out is weighted at the average of those who opted in, so opting out
+  is neither a discount nor a penalty. The opt-in copy is explicit that a larger share
+  still implies a larger income — that much is inherent to weighting, and pretending
+  otherwise would be the dishonest part.
 - **Settle up** — a greedy matcher reduces every debt in the group to the fewest
   possible transfers, and recorded payments net off against the balances.
 - **Shared goals** — each contribution is credited to whoever made it.
@@ -39,13 +48,34 @@ it hurts most.
 - **Admin controls** — only admins rename the group, rotate the code, or change the
   shared budget rules. Leaving is blocked while you still hold an open balance.
 
-### 4. Insights: rules first, AI second
+### 4. The Silent Collector
+Chasing a friend for money is the most socially expensive thing a shared ledger can ask
+of anyone, and it is why they quietly die — the debt is recorded, nobody wants to raise
+it, and the group stops using the app rather than have the conversation. Finget raises it
+instead: a gentle nudge at day 3, a firmer one at day 7, a plain summary at day 14, and
+then **silence**. Three messages per debt, ever.
+
+- **Never shames.** No "overdue", no counting how many times it has asked. The debtor is
+  a friend who forgot, because that is who they almost always are.
+- **Only the debtor** is messaged, never the group. Per-person mute, per-group mute, and
+  an admin switch for the whole group. Muting silences the messages, not the balance.
+- **One-tap settling** via a `upi://pay` intent with the amount pre-filled. Finget does
+  not hold, move, or see the money — the link opens the payer's own UPI app, and the debt
+  stays open until a human records the payment.
+- **Idempotent by construction.** Scheduling is a unique index on
+  (group, debtor, creditor, stage, debt-episode), not a check-then-write, so repeated,
+  concurrent, or crash-retried sweeps converge on exactly one message. Settling and
+  falling behind again starts a new episode, so the key never locks anyone out forever.
+- Email is optional (`RESEND_API_KEY`). Without it reminders still arrive in-app, still
+  escalate on the same schedule, and still carry the pay link.
+
+### 5. Insights: rules first, AI second
 Deterministic rules run instantly and always: recurring-charge detection, category
 overspend vs last month, projected month-end balance, goal-pace warnings, weekend
 spending spikes, and a group contribution-imbalance check. An LLM pass layers on top
 **when a key is configured** — and the app states plainly when it is not.
 
-### 5. The Deflection Ledger and the 48-hour vault
+### 6. The Deflection Ledger and the 48-hour vault
 Every other money app only counts what you got wrong. Tap **I want this** and the
 amount leaves safe-to-spend *immediately* — the dashboard number moves before you
 have left the page — and Finget asks again in two days. Walk away and it is credited
@@ -57,7 +87,7 @@ Group holds are scope-local, capped at a quarter of group headroom per member so
 indecisive person cannot freeze everyone's number, and releasable by the creator or a
 group admin.
 
-### 6. Trip Mode and Trip Wrapped
+### 7. Trip Mode and Trip Wrapped
 A trip is a group with a clock, not a separate entity — splits, settle-up, goals and the
 activity feed all keep working. Set dates and a pot and the dashboard grows a live burn
 strip: *"Day 2 of 5 · 61% spent · you're running hot."* Pace compares spend progress
@@ -78,7 +108,7 @@ and first initials — deliberately **not the total**, because that is the figur
 make a forwarded link worth having. Resetting the link kills every copy already sent and
 removes nobody from the group.
 
-### 7. Import: stop typing transactions in
+### 8. Import: stop typing transactions in
 Manual entry is the biggest reason people abandon this category. Paste a batch of bank
 or UPI SMS and Finget reads them with **per-issuer regex — no API key, no network call,
 nothing leaves the server**. Bank SMS is among the most sensitive text a person owns, so
@@ -96,7 +126,7 @@ date ±1 day, and fuzzy merchant. Categories are suggested from the person's own
 corrections first (a plain merchant→category map, no ML), then a small seed list. **No
 image is ever stored** — read once, discarded, and the UI says so.
 
-### 8. Context-aware AI coach
+### 9. Context-aware AI coach
 Streams over SSE with persistent per-scope conversation memory. Its figures come from
 the database, not from the client, so the numbers it quotes are always the real ones.
 
@@ -230,6 +260,11 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `GET` | `/api/groups/:id/balances` | Balances + minimal transfers |
 | `POST` | `/api/groups/:id/settle` | Record a payment |
 | `GET` | `/api/groups/:id/activity` | Merged activity feed |
+| `POST` | `/api/groups/:id/income-sharing` | **Opt in / out of income weighting.** Acts only on the caller — nobody, admin included, can consent on your behalf |
+| `GET` | `/api/groups/:id/split-preview` | Shares for an amount, plus a relative label about **your own** share only |
+| `POST` | `/api/groups/:id/mute-reminders` | Mute the Silent Collector for this group, for yourself |
+| `GET` | `/api/notifications` | In-app notifications + unread count |
+| `POST` | `/api/notifications/read` | Mark one, several, or all as read |
 | `POST` | `/api/ai/coach` | SSE coach stream |
 | `GET/DELETE` | `/api/ai/coach/history` | Per-scope conversation |
 | `GET` | `/api/ai/insights` | Rule + AI insights |
@@ -302,7 +337,9 @@ npm --prefix finget-backend test
 
 Every money calculation and every authorization boundary is covered: paise
 conversion and remainder distribution, IST month boundaries, goal translation,
-split reconciliation, scope isolation, and share-payload redaction.
+split reconciliation (equal *and* weighted), income non-disclosure, reminder
+idempotency under repeated and concurrent sweeps, scope isolation, and
+share-payload redaction.
 
 `tests/no-bare-hundreds.test.js` scans the backend for a stray `* 100` or
 `/ 100` outside `utils/money.js` and fails the build if it finds one — that is

@@ -61,6 +61,7 @@ function createApp() {
   app.use("/api/receipts", express.json({ limit: "9mb" }), require("./routes/receiptRoutes"));
   app.use("/api/tokens", require("./routes/apiTokenRoutes"));
   app.use("/api/deflections", require("./routes/deflectionRoutes"));
+  app.use("/api/notifications", require("./routes/notificationRoutes"));
   app.use("/api/share", require("./routes/shareCardRoutes"));
 
   /**

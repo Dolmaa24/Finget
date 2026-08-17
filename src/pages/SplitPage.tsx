@@ -10,6 +10,7 @@ import {
   History,
   Sparkles,
   Receipt,
+  Smartphone,
 } from 'lucide-react';
 import { groupApi } from '../api';
 import { useScope } from '../context/scopeStore';
@@ -198,6 +199,26 @@ export const SplitPage: React.FC = () => {
                           <span className="text-[15px] font-semibold numeric text-ink ml-auto">
                             {inr(t.amount)}
                           </span>
+
+                          {/*
+                            Only ever present on your own outgoing transfer, and
+                            only when the payee has published a UPI handle. It
+                            is a plain link: it opens the UPI app on this device,
+                            Finget neither sees nor moves the money, and the debt
+                            stays open until "Mark paid" records it.
+                          */}
+                          {t.payIntent && (
+                            <a
+                              href={t.payIntent}
+                              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-pill bg-[var(--accent)]
+                                         text-white text-[12.5px] font-semibold shadow-soft
+                                         hover:bg-[var(--accent-soft)] transition-all duration-200 active:scale-[0.97]"
+                            >
+                              <Smartphone className="w-3.5 h-3.5" />
+                              Pay via UPI
+                            </a>
+                          )}
+
                           <Button size="sm" variant="glass" onClick={() => openSettle(t)}>
                             Mark paid
                           </Button>
@@ -208,8 +229,12 @@ export const SplitPage: React.FC = () => {
                 )}
 
                 {myTransfers.length > 0 && (
-                  <p className="text-[12.5px] text-ink-3 mt-4">
-                    {myTransfers.length} of these involve you.
+                  <p className="text-[12.5px] text-ink-3 mt-4 leading-relaxed">
+                    {myTransfers.length} of these{' '}
+                    {myTransfers.length === 1 ? 'involves' : 'involve'} you.{' '}
+                    {myTransfers.some((t) => t.payIntent)
+                      ? 'Paying via UPI opens your own app — Finget never holds the money, so mark it paid here once it goes through.'
+                      : 'Add a UPI ID in Settings and people who owe you get a one-tap pay button.'}
                   </p>
                 )}
               </Panel>

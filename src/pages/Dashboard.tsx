@@ -87,7 +87,7 @@ export const Dashboard: React.FC = () => {
         </h1>
         <p className="text-ink-2 mt-2">
           {isFriends
-            ? 'One shared wallet. Everything below is pooled across members.'
+            ? 'One shared wallet. Spending is pooled across everyone; income only from members who share it.'
             : 'Clear head, safe spending.'}
         </p>
       </header>
@@ -115,10 +115,23 @@ export const Dashboard: React.FC = () => {
             />
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger">
+              {/*
+                In a group this is the pooled income of the members who turned
+                income sharing on — never all of them by default. The subtitle
+                has to name the count: a total labelled "pooled" that silently
+                covers one person out of four is a lie, and a total that covers
+                everyone is a leak (subtract your own and you have theirs).
+              */}
               <Stat
                 label="Income"
                 value={inr(affordability.income)}
-                sub={isFriends ? 'Pooled' : 'This month'}
+                sub={
+                  isFriends
+                    ? affordability.incomeContributors === 0
+                      ? 'Nobody sharing yet'
+                      : `Pooled from ${affordability.incomeContributors} of ${affordability.memberCount}`
+                    : 'This month'
+                }
                 icon={<Wallet className="w-3.5 h-3.5" />}
               />
               <Stat

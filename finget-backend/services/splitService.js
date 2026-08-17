@@ -42,6 +42,65 @@ function weightedSplit(amountRupees, memberIds, weights) {
 }
 
 /**
+ * Turn per-member incomes and per-group consent into split weights.
+ *
+ * The rule from the milestone is "anyone opted out falls back to equal weight",
+ * which needs a number: weights are incomes, and "equal" has no income. An
+ * opted-out member is therefore given the MEAN income of the members who did
+ * opt in — the weight of a perfectly average person in this group. Three
+ * consequences, all intended:
+ *
+ *   - Opting out is neutral. You pay what a plain equal split would have asked
+ *     of an average earner, so it is neither a discount nor a penalty, and
+ *     nobody can read your income out of your share.
+ *   - With nobody opted in, every weight is the same and the result is exactly
+ *     an equal split. A group can set `weighted` as its default before a single
+ *     member has consented and nothing surprising happens.
+ *   - A member who opted in but has not entered an income is treated as opted
+ *     out. Consent without a figure carries no information, and weighting them
+ *     at zero would hand them a free dinner.
+ *
+ * @param {string[]} participantIds
+ * @param {Map<string, number>} incomeByUserId monthly income in rupees
+ * @param {Set<string>} optedInIds consent, per group
+ * @returns {{weights: number[], consentingCount: number}}
+ */
+function resolveIncomeWeights(participantIds, incomeByUserId, optedInIds) {
+  const hasSignal = (id) => optedInIds.has(id) && Number(incomeByUserId.get(id)) > 0;
+
+  const consenting = participantIds.filter(hasSignal);
+  if (consenting.length === 0) {
+    return { weights: participantIds.map(() => 1), consentingCount: 0 };
+  }
+
+  const total = consenting.reduce((sum, id) => sum + Number(incomeByUserId.get(id)), 0);
+  const mean = total / consenting.length;
+
+  return {
+    weights: participantIds.map((id) => (hasSignal(id) ? Number(incomeByUserId.get(id)) : mean)),
+    consentingCount: consenting.length,
+  };
+}
+
+/**
+ * How one share compares to what an equal split would have charged.
+ *
+ * This is the ONLY comparative information a weighted split is allowed to
+ * surface, and it is computed per viewer about their own share. "You're paying
+ * a larger share" is a fact about the reader; "Priya earns more than you" is a
+ * fact about Priya, and Finget never says it.
+ *
+ * The one-paisa deadband keeps a rounding remainder from reading as a verdict:
+ * on a ₹100 three-way split someone has to absorb the extra paisa, and that is
+ * not "paying more".
+ */
+function relativeShareLabel(sharePaise, equalSharePaise) {
+  const deltaPaise = sharePaise - equalSharePaise;
+  if (Math.abs(deltaPaise) <= 1) return "even";
+  return deltaPaise > 0 ? "larger" : "smaller";
+}
+
+/**
  * Net position per member, in paise.
  *
  * Positive = the group owes them (they fronted more than their share).
@@ -121,6 +180,8 @@ function suggestSettlementsPaise(balancesPaise) {
 module.exports = {
   equalSplit,
   weightedSplit,
+  resolveIncomeWeights,
+  relativeShareLabel,
   computeBalancesPaise,
   suggestSettlementsPaise,
 };

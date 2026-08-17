@@ -8,6 +8,7 @@ const { isGroupMember } = require("./utils/groupAuth");
 const { isAiConfigured, PROVIDER_NAME, MODEL } = require("./services/aiClient");
 const { isPaywallEnabled } = require("./services/entitlements");
 const { startVaultSweep } = require("./jobs/vaultSweep");
+const { startReminderSweep } = require("./jobs/reminderSweep");
 const { createApp } = require("./app");
 
 if (!process.env.JWT_SECRET) {
@@ -73,4 +74,7 @@ server.listen(PORT, () => {
   // starting timers.
   startVaultSweep();
   console.log("Vault sweep: running every 15 minutes");
+
+  startReminderSweep();
+  console.log("Silent Collector: running hourly");
 });

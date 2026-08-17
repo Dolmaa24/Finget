@@ -24,6 +24,7 @@ import { BrandMark, Wordmark } from './Brand';
 import { ModeSwitch } from './ModeSwitch';
 import { Avatar } from './ui';
 import { AddTransactionModal } from './AddTransactionModal';
+import { NotificationBell } from './NotificationBell';
 
 interface NavItem {
   to: string;
@@ -166,6 +167,8 @@ export const AppShell: React.FC = () => {
             </button>
 
             <ModeSwitch compact />
+
+            <NotificationBell />
 
             <NavLink to="/settings" className="shrink-0" title={user?.name}>
               <Avatar name={user?.name} size={38} />

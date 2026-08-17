@@ -16,6 +16,9 @@ const {
   recordSettlement,
   getActivity,
   getTripStatus,
+  setIncomeSharing,
+  getSplitPreview,
+  muteGroupReminders,
 } = require("../controllers/groupController");
 const { getWrapped, shareWrapped, shareInvite } = require("../controllers/wrappedController");
 
@@ -41,6 +44,16 @@ router.post("/:id/leave", auth, leaveGroup);
 router.get("/:id/balances", auth, getBalances);
 router.post("/:id/settle", auth, recordSettlement);
 router.get("/:id/activity", auth, getActivity);
+
+/**
+ * Income-weighted splits. The opt-in acts only on the caller — see the note on
+ * `setIncomeSharing` for why there is no admin-side version of this route.
+ */
+router.post("/:id/income-sharing", auth, setIncomeSharing);
+router.get("/:id/split-preview", auth, getSplitPreview);
+
+/** The Silent Collector's per-member off switch. Acts only on the caller. */
+router.post("/:id/mute-reminders", auth, muteGroupReminders);
 
 /** Trip mode. */
 router.get("/:id/trip-status", auth, getTripStatus);

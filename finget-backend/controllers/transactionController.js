@@ -3,8 +3,9 @@ const Group = require("../models/Group");
 const User = require("../models/User");
 const { isGroupMember, isGroupAdmin, idOf } = require("../utils/groupAuth");
 const { evaluateSpendNudge } = require("../services/nudgeService");
-const { equalSplit } = require("../services/splitService");
-const { broadcastTripStatus } = require("./groupController");
+const { can, explain, CAPABILITIES } = require("../services/entitlements");
+const { equalSplit, weightedSplit } = require("../services/splitService");
+const { broadcastTripStatus, weightsForGroup } = require("./groupController");
 
 const CATEGORIES = [
   "Food", "Groceries", "Rent", "Transport", "Shopping", "Bills",
@@ -70,7 +71,7 @@ exports.addTransaction = async (req, res) => {
           status: "pending",
         }));
         finalSplitMode = "custom";
-      } else if (splitMode === "equal") {
+      } else if (splitMode === "equal" || splitMode === "weighted") {
         // Optionally restrict to a subset of members.
         const participants =
           Array.isArray(splitWith) && splitWith.length
@@ -79,8 +80,32 @@ exports.addTransaction = async (req, res) => {
         if (participants.length === 0) {
           return res.status(400).json({ msg: "no valid members to split between" });
         }
-        finalSplits = equalSplit(value, participants);
-        finalSplitMode = "equal";
+
+        if (splitMode === "weighted") {
+          // Same gate the preview enforces. Checked on the write too, because
+          // the preview is a convenience and this is the thing that persists.
+          const actor = await User.findById(req.user).select("entitlements").lean();
+          if (!can(actor, CAPABILITIES.WEIGHTED_SPLITS, { group })) {
+            return res.status(403).json({
+              msg: explain(CAPABILITIES.WEIGHTED_SPLITS),
+              capability: CAPABILITIES.WEIGHTED_SPLITS,
+            });
+          }
+
+          // The group doc arrived unpopulated, and weights are read live from
+          // each member's User doc rather than cached anywhere — see the note
+          // on `Group.incomeSharing`.
+          await group.populate("members", "monthlyIncome");
+          const { weights, consentingCount } = weightsForGroup(group, participants);
+          finalSplits = weightedSplit(value, participants, weights);
+          // A weighted split with nobody consenting IS an equal split, and the
+          // stored mode has to say what actually happened — otherwise the
+          // ledger claims a weighting that never took place.
+          finalSplitMode = consentingCount > 0 ? "weighted" : "equal";
+        } else {
+          finalSplits = equalSplit(value, participants);
+          finalSplitMode = "equal";
+        }
       }
     }
 

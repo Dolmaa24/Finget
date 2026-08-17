@@ -1,6 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { User, PiggyBank, ShieldCheck, Wand2, LogOut, Lock, Puzzle, Trash2 } from 'lucide-react';
+import {
+  User,
+  PiggyBank,
+  ShieldCheck,
+  Wand2,
+  LogOut,
+  Lock,
+  Puzzle,
+  Trash2,
+  Bell,
+  BellOff,
+} from 'lucide-react';
 import { authApi, financeApi, tokenApi, type ApiToken, type BudgetSettings } from '../api';
 import { useAuth } from '../context/authStore';
 import { useScope } from '../context/scopeStore';
@@ -28,6 +39,8 @@ export const SettingsPage: React.FC = () => {
   const [name, setName] = useState('');
   const [income, setIncome] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [upiId, setUpiId] = useState('');
+  const [savingReminders, setSavingReminders] = useState(false);
 
   const [budget, setBudget] = useState<BudgetSettings | null>(null);
   const [savingsTarget, setSavingsTarget] = useState('');
@@ -43,6 +56,7 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     setName(user?.name || '');
     setIncome(user?.monthlyIncome ? String(user.monthlyIncome) : '');
+    setUpiId(user?.upiId || '');
   }, [user]);
 
   useEffect(() => {
@@ -116,6 +130,44 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const saveReminderSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingReminders(true);
+    try {
+      await authApi.updateMe({ upiId: upiId.trim() });
+      await refreshUser();
+      toast(
+        upiId.trim()
+          ? 'Saved. People who owe you get a one-tap pay button.'
+          : 'UPI ID cleared. Your reminders go out without a pay button.',
+        'success'
+      );
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not save.', 'error');
+    } finally {
+      setSavingReminders(false);
+    }
+  };
+
+  const toggleMuteAll = async () => {
+    setSavingReminders(true);
+    try {
+      const next = !user?.reminderPrefs?.mutedAll;
+      await authApi.updateMe({ mutedAll: next });
+      await refreshUser();
+      toast(
+        next
+          ? 'All settle-up reminders muted. Balances still show on Split & settle.'
+          : 'Settle-up reminders are back on.',
+        'success'
+      );
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not save.', 'error');
+    } finally {
+      setSavingReminders(false);
+    }
+  };
+
   const saveBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingBudget(true);
@@ -181,7 +233,7 @@ export const SettingsPage: React.FC = () => {
             </Field>
             <Field
               label="Monthly income"
-              hint="Drives your personal safe-to-spend, and your share of any group's pooled income."
+              hint="Drives your safe-to-spend. Shared with a group only if you turn on income sharing there — and even then, only as your share of an expense, never as a figure."
             >
               <MoneyInput
                 value={income}
@@ -203,6 +255,77 @@ export const SettingsPage: React.FC = () => {
                 Save profile
               </Button>
             </div>
+          </form>
+        </Panel>
+
+        {/* Settle-up reminders */}
+        <Panel>
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <span className="w-9 h-9 rounded-md bg-[var(--accent-wash)] text-accent flex items-center justify-center">
+              <Bell className="w-[18px] h-[18px]" />
+            </span>
+            <h2 className="font-semibold text-ink">Settle-up reminders</h2>
+          </div>
+          <p className="text-[13px] text-ink-2 mb-6 leading-relaxed">
+            When you owe someone in a group, Finget nudges you once after 3 days, again after 7,
+            and sends a plain summary after 14 — then it stops. Only you get them, never the
+            group.
+          </p>
+
+          <form onSubmit={saveReminderSettings} className="space-y-4">
+            <Field
+              label="Your UPI ID (optional)"
+              hint="Put on reminders sent to people who owe you, so paying you back is one tap. Leave it blank and the reminder still goes out, just without the button."
+            >
+              <Input
+                value={upiId}
+                onChange={(e) => setUpiId(e.target.value)}
+                placeholder="you@okhdfcbank"
+                maxLength={128}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </Field>
+
+            {/*
+              The trust line, in the place where someone is deciding whether to
+              hand over a payment handle. Finget is not in the payment path and
+              this is where that has to be said plainly.
+            */}
+            <p className="text-[12px] text-ink-3 leading-relaxed flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-px text-safe" />
+              Finget never holds or moves money. The pay button opens the other person's own UPI
+              app, and the debt stays open here until someone records the payment.
+            </p>
+
+            <div className="flex justify-between items-center gap-3 pt-1 flex-wrap">
+              <Button
+                type="button"
+                variant="ghost"
+                loading={savingReminders}
+                icon={
+                  user?.reminderPrefs?.mutedAll ? (
+                    <Bell className="w-4 h-4" />
+                  ) : (
+                    <BellOff className="w-4 h-4" />
+                  )
+                }
+                onClick={toggleMuteAll}
+              >
+                {user?.reminderPrefs?.mutedAll ? 'Unmute all reminders' : 'Mute all reminders'}
+              </Button>
+              <Button type="submit" loading={savingReminders}>
+                Save
+              </Button>
+            </div>
+
+            {user?.reminderPrefs?.mutedAll && (
+              <p className="text-[12.5px] text-ink-2 bg-white/45 rounded-sm px-3.5 py-2.5 leading-relaxed">
+                Every reminder is muted, in every group. What you owe still shows on Split &amp;
+                settle — muting silences the messages, not the debt.
+              </p>
+            )}
           </form>
         </Panel>
 
@@ -259,8 +382,14 @@ export const SettingsPage: React.FC = () => {
               <div className="glass-well rounded-md p-4 flex items-center gap-3">
                 <PiggyBank className="w-4.5 h-4.5 text-ink-3 shrink-0" />
                 <p className="text-[12.5px] text-ink-2">
-                  {isFriends ? 'Pooled income' : 'Monthly income'}:{' '}
+                  {isFriends ? 'Shared income' : 'Monthly income'}:{' '}
                   <strong className="text-ink numeric">{inr(budget?.monthlyIncome || 0)}</strong>
+                  {isFriends && (
+                    <span className="text-ink-3">
+                      {' '}
+                      — only from members who turned on income sharing.
+                    </span>
+                  )}
                 </p>
               </div>
 

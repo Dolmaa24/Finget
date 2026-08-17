@@ -116,6 +116,19 @@ async function openHold(scope, userId, { label, amountPaise, sourceUrl, translat
 }
 
 async function assertWithinGroupCap(scope, userId, amountPaise) {
+  /**
+   * No shared income, no cap.
+   *
+   * From Milestone 5 a group's pooled income counts only members who opted
+   * into income sharing, so a group where nobody has opted in has a pooled
+   * income of zero — not because it is broke, but because it has told Finget
+   * nothing. This cap exists to stop one member ring-fencing a KNOWN shared
+   * headroom; with no shared number there is no headroom to protect, and
+   * refusing every hold would punish the group for declining to publish their
+   * salaries. The per-member vault rules still apply.
+   */
+  if (scope.incomeContributors === 0) return;
+
   // Gross headroom: affordability with no holds subtracted.
   const gross = calculateAffordability(scope.owner, scope.transactions, scope.settings);
   const headroomPaise = toPaise(Math.max(0, gross.remaining));

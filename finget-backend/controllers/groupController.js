@@ -1,15 +1,39 @@
 const Group = require("../models/Group");
+const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const Settlement = require("../models/Settlement");
 const Goal = require("../models/Goal");
 const { isGroupMember, isGroupAdmin, idOf } = require("../utils/groupAuth");
-const { computeBalancesPaise, suggestSettlementsPaise } = require("../services/splitService");
+const {
+  computeBalancesPaise,
+  suggestSettlementsPaise,
+  resolveIncomeWeights,
+  relativeShareLabel,
+} = require("../services/splitService");
 const { computeTripStatus, paceMessage, spentPaiseFrom } = require("../services/tripService");
 const { groupIdForPreviewToken } = require("../services/tripPreviewService");
-const { toPaise, fromPaise } = require("../utils/money");
+const { buildUpiIntent } = require("../services/upiIntent");
+const { toPaise, fromPaise, allocatePaise, splitPaise } = require("../utils/money");
+const { can, explain, CAPABILITIES } = require("../services/entitlements");
 
-/** Shared shape for every group payload the client receives. */
+/**
+ * Shared shape for every group payload the client receives.
+ *
+ * INCOME NEVER LEAVES ITS OWNER. This function used to return every member's
+ * `monthlyIncome` to every other member, which made the Groups page able to
+ * print "₹X pooled income" — and in a two-person group, subtracting your own
+ * figure from that total tells you the other person's salary exactly. Income
+ * weighting is the feature that makes this dangerous rather than merely rude,
+ * so the field is now returned only to the person it belongs to.
+ *
+ * What co-members may know about each other: name, email, admin status, and
+ * whether they have opted into income weighting *in this group*. That last one
+ * has to be visible — a group deciding whether to switch to weighted splits
+ * needs to know how many people are in, and it says nothing about amounts.
+ */
 function serializeGroup(group, userId) {
+  const optedIn = new Set((group.incomeSharing || []).map((entry) => idOf(entry.userId)));
+
   return {
     _id: group._id,
     name: group.name,
@@ -28,18 +52,28 @@ function serializeGroup(group, userId) {
     /** Members only. A stranger gets `previewToken` in a link, never in a payload. */
     previewToken: group.previewToken || null,
     isAdmin: isGroupAdmin(group, userId),
+
+    splitMode: group.splitDefaults?.mode || "equal",
+    remindersEnabled: group.reminders?.enabled !== false,
+    /** How many members have consented — a count, never a list of amounts. */
+    incomeSharingCount: optedIn.size,
+    /** The requester's own consent, so the toggle can render its true state. */
+    incomeSharingOptedIn: optedIn.has(idOf(userId)),
+
     members: (group.members || []).map((m) => ({
       _id: idOf(m),
       name: m.name || "Member",
       email: m.email,
-      monthlyIncome: m.monthlyIncome || 0,
       isAdmin: isGroupAdmin(group, m),
+      sharesIncome: optedIn.has(idOf(m)),
+      // Yours only. See the note above this function.
+      monthlyIncome: idOf(m) === idOf(userId) ? m.monthlyIncome || 0 : undefined,
     })),
   };
 }
 
 async function loadGroupForMember(groupId, userId) {
-  const group = await Group.findById(groupId).populate("members", "name email monthlyIncome");
+  const group = await Group.findById(groupId).populate("members", "name email monthlyIncome upiId");
   if (!group || !isGroupMember(group, userId)) return null;
   return group;
 }
@@ -136,7 +170,7 @@ exports.createGroup = async (req, res) => {
       ...trip,
     });
 
-    await group.populate("members", "name email monthlyIncome");
+    await group.populate("members", "name email monthlyIncome upiId");
     res.json(serializeGroup(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -156,13 +190,13 @@ exports.joinByCode = async (req, res) => {
     if (!group) return res.status(404).json({ msg: "No group found for that code" });
 
     if (isGroupMember(group, req.user)) {
-      await group.populate("members", "name email monthlyIncome");
+      await group.populate("members", "name email monthlyIncome upiId");
       return res.json(serializeGroup(group, req.user));
     }
 
     group.members.push(req.user);
     await group.save();
-    await group.populate("members", "name email monthlyIncome");
+    await group.populate("members", "name email monthlyIncome upiId");
 
     const io = req.app.get("io");
     if (io) io.to(`group:${group._id}`).emit("group:updated", { groupId: String(group._id) });
@@ -176,7 +210,7 @@ exports.joinByCode = async (req, res) => {
 exports.getGroups = async (req, res) => {
   try {
     const groups = await Group.find({ members: req.user })
-      .populate("members", "name email monthlyIncome")
+      .populate("members", "name email monthlyIncome upiId")
       .sort({ createdAt: -1 });
     res.json(groups.map((g) => serializeGroup(g, req.user)));
   } catch (err) {
@@ -202,9 +236,23 @@ exports.updateGroup = async (req, res) => {
       return res.status(403).json({ msg: "Only group admins can edit the group" });
     }
 
-    const { name, emoji } = req.body;
+    const { name, emoji, splitMode, remindersEnabled } = req.body;
     if (name && name.trim()) group.name = name.trim();
     if (emoji) group.emoji = emoji;
+
+    if (splitMode !== undefined) {
+      if (!["equal", "weighted"].includes(splitMode)) {
+        return res.status(400).json({ msg: "splitMode must be 'equal' or 'weighted'" });
+      }
+      group.splitDefaults = { ...(group.splitDefaults || {}), mode: splitMode };
+    }
+
+    // Admins can switch the Silent Collector off for the whole group. They
+    // cannot switch it on for someone who muted it individually — that toggle
+    // belongs to the person being reminded, and lives on their User doc.
+    if (remindersEnabled !== undefined) {
+      group.reminders = { ...(group.reminders || {}), enabled: Boolean(remindersEnabled) };
+    }
 
     try {
       Object.assign(group, readTripFields(req.body, group));
@@ -311,12 +359,33 @@ exports.getBalances = async (req, res) => {
       };
     });
 
+    const upiFor = (id) => byId.get(id)?.upiId;
+    const me = idOf(req.user);
+
     const transfers = suggestSettlementsPaise(balancesPaise).map((t) => ({
       from: t.from,
       to: t.to,
       amount: fromPaise(t.amountPaise),
       fromName: nameFor(t.from),
       toName: nameFor(t.to),
+      /**
+       * Built only for the requester's OWN outgoing transfer. Everyone can see
+       * who owes whom — that is the ledger — but a member's payment handle is
+       * handed out only to the one person with a reason to use it right now,
+       * rather than broadcast to the whole group on every balance fetch.
+       *
+       * Tapping it opens the payer's own UPI app. Finget is not in the payment
+       * path and the debt stays open until someone records the settlement.
+       */
+      payIntent:
+        t.from === me
+          ? buildUpiIntent({
+              upiId: upiFor(t.to),
+              payeeName: nameFor(t.to),
+              amountPaise: t.amountPaise,
+              note: `${group.name} settle-up`,
+            })
+          : null,
     }));
 
     const totalGroupSpendPaise = transactions
@@ -440,6 +509,194 @@ exports.getActivity = async (req, res) => {
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     res.json(feed.slice(0, 50));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * `POST /api/groups/:id/mute-reminders` — the debtor's own off switch.
+ *
+ * Distinct from the admin's group-wide switch on `PUT /api/groups/:id`. Both
+ * exist because they answer different questions: the admin's is "this group
+ * doesn't want a collector at all", and this one is "I don't want to be
+ * messaged about this group". Nobody can un-mute someone else.
+ *
+ * Muting hides the messages, not the debt. The balance stays visible on the
+ * Split page, because a reminder system you can silence into forgetting what
+ * you owe would be worse for the person than the reminders were.
+ */
+exports.muteGroupReminders = async (req, res) => {
+  try {
+    const group = await loadGroupForMember(req.params.id, req.user);
+    if (!group) return res.status(403).json({ msg: "Not authorized for this group" });
+
+    if (typeof req.body.muted !== "boolean") {
+      return res.status(400).json({ msg: "muted must be true or false" });
+    }
+
+    // $addToSet / $pull rather than read-modify-write: two tabs toggling two
+    // different groups must not overwrite each other's array.
+    const update = req.body.muted
+      ? { $addToSet: { "reminderPrefs.mutedGroups": group._id } }
+      : { $pull: { "reminderPrefs.mutedGroups": group._id } };
+
+    await User.findByIdAndUpdate(req.user, update);
+    res.json({ groupId: String(group._id), muted: req.body.muted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Income-weighted splits                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `POST /api/groups/:id/income-sharing` — consent, or withdraw it.
+ *
+ * Only ever acts on the caller. There is no admin override and no "opt the
+ * group in" bulk action, deliberately: consent someone else can grant on your
+ * behalf is not consent, and a group admin being able to switch on a mode that
+ * exposes the shape of your salary would make admin a position of power over
+ * the people in it.
+ *
+ * Withdrawing is immediate and needs no reason. Splits already recorded are
+ * left exactly as they were — rewriting history to un-weight past expenses
+ * would change what people owe each other, which is not this endpoint's call
+ * to make.
+ */
+exports.setIncomeSharing = async (req, res) => {
+  try {
+    const group = await loadGroupForMember(req.params.id, req.user);
+    if (!group) return res.status(403).json({ msg: "Not authorized for this group" });
+
+    if (typeof req.body.optIn !== "boolean") {
+      return res.status(400).json({ msg: "optIn must be true or false" });
+    }
+
+    const me = idOf(req.user);
+    const others = (group.incomeSharing || []).filter((entry) => idOf(entry.userId) !== me);
+
+    group.incomeSharing = req.body.optIn
+      ? [...others, { userId: req.user, optedInAt: new Date() }]
+      : others;
+
+    await group.save();
+    await group.populate("members", "name email monthlyIncome upiId");
+
+    const io = req.app.get("io");
+    if (io) io.to(`group:${group._id}`).emit("group:updated", { groupId: String(group._id) });
+
+    res.json(serializeGroup(group, req.user));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * Read the group's weights for a set of participants.
+ *
+ * Shared by the preview endpoint and by the transaction write, so what the Add
+ * sheet shows and what actually gets stored can never be computed differently.
+ */
+function weightsForGroup(group, participantIds) {
+  const optedIn = new Set((group.incomeSharing || []).map((entry) => idOf(entry.userId)));
+  const incomeByUserId = new Map(
+    (group.members || []).map((m) => [idOf(m), Number(m.monthlyIncome) || 0])
+  );
+  return resolveIncomeWeights(participantIds, incomeByUserId, optedIn);
+}
+
+exports.weightsForGroup = weightsForGroup;
+
+/**
+ * `GET /api/groups/:id/split-preview?amount=&mode=&participants=a,b,c`
+ *
+ * What each person would owe, before anyone commits to it.
+ *
+ * The shares themselves are not secret — every participant sees them on the
+ * expense the moment it is saved, and hiding them would make the ledger
+ * unauditable. What IS withheld is any income figure and any comparison
+ * between two other people: the only comparative sentence returned is about
+ * the reader's own share, which is why `relativeLabel` is scoped to them.
+ *
+ * A group can still infer that a member with a bigger share earns more. That
+ * is inherent to weighted splitting, not a leak this endpoint could close, and
+ * the opt-in copy says so in as many words before anyone consents.
+ */
+exports.getSplitPreview = async (req, res) => {
+  try {
+    const group = await loadGroupForMember(req.params.id, req.user);
+    if (!group) return res.status(403).json({ msg: "Not authorized for this group" });
+
+    const amount = Number(req.query.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ msg: "amount must be a positive number" });
+    }
+
+    const mode = req.query.mode === "weighted" ? "weighted" : "equal";
+
+    // The gate M0 declared and nothing had yet reached for. Open until
+    // PAYWALL_ENABLED flips in Milestone 8, and grantable by a group's Trip
+    // Pass — weighting is a group act, so one purchase covers the table.
+    if (mode === "weighted") {
+      const actor = await User.findById(req.user).select("entitlements").lean();
+      if (!can(actor, CAPABILITIES.WEIGHTED_SPLITS, { group })) {
+        return res.status(403).json({
+          msg: explain(CAPABILITIES.WEIGHTED_SPLITS),
+          capability: CAPABILITIES.WEIGHTED_SPLITS,
+        });
+      }
+    }
+
+    const memberIds = (group.members || []).map((m) => idOf(m));
+    const requested = String(req.query.participants || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const participants = requested.length
+      ? requested.filter((id) => memberIds.includes(id))
+      : memberIds;
+
+    if (participants.length === 0) {
+      return res.status(400).json({ msg: "no valid members to split between" });
+    }
+
+    const { weights, consentingCount } =
+      mode === "weighted"
+        ? weightsForGroup(group, participants)
+        : { weights: participants.map(() => 1), consentingCount: 0 };
+
+    const totalPaise = toPaise(amount);
+    const sharesPaise = allocatePaise(totalPaise, weights);
+    const equalSharesPaise = splitPaise(totalPaise, participants.length);
+
+    const nameById = new Map((group.members || []).map((m) => [idOf(m), m.name || "Member"]));
+    const me = idOf(req.user);
+    const myIndex = participants.indexOf(me);
+
+    res.json({
+      mode,
+      /**
+       * True when `weighted` was asked for but nobody has consented, so the
+       * result is an equal split wearing a weighted label. The UI says this out
+       * loud rather than letting a group believe weighting is on when it isn't.
+       */
+      degradedToEqual: mode === "weighted" && consentingCount === 0,
+      consentingCount,
+      shares: participants.map((userId, i) => ({
+        userId,
+        name: nameById.get(userId) || "Member",
+        amount: fromPaise(sharesPaise[i]),
+        amountPaise: sharesPaise[i],
+      })),
+      yourShare: myIndex === -1 ? null : fromPaise(sharesPaise[myIndex]),
+      relativeLabel:
+        myIndex === -1
+          ? null
+          : relativeShareLabel(sharesPaise[myIndex], equalSharesPaise[myIndex]),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -585,7 +842,7 @@ exports.joinByPreviewToken = async (req, res) => {
       if (io) io.to(`group:${group._id}`).emit("group:updated", { groupId: String(group._id) });
     }
 
-    await group.populate("members", "name email monthlyIncome");
+    await group.populate("members", "name email monthlyIncome upiId");
     res.json(serializeGroup(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
