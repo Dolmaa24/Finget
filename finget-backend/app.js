@@ -43,6 +43,29 @@ function createApp() {
       },
     })
   );
+  /**
+   * The WhatsApp webhook is mounted ABOVE the global JSON parser, with its own.
+   *
+   * Meta signs the RAW REQUEST BYTES. Express's parser consumes the stream and
+   * keeps only the parsed object, and re-serialising that object produces
+   * different bytes — different key order, different whitespace — so every
+   * signature would fail. The `verify` hook is the documented way to keep a
+   * copy, and it has to run on the first parser that touches the body.
+   *
+   * The 512 KB cap is generous for a webhook whose largest realistic payload
+   * is a batch of text messages.
+   */
+  app.use(
+    "/api/whatsapp",
+    express.json({
+      limit: "512kb",
+      verify: (req, res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+    require("./routes/whatsappRoutes")
+  );
+
   app.use(express.json({ limit: "1mb" }));
 
   app.use("/api/auth", require("./routes/authRoutes"));

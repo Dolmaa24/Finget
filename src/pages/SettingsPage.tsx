@@ -17,6 +17,7 @@ import { useAuth } from '../context/authStore';
 import { useScope } from '../context/scopeStore';
 import { useToast } from '../context/toastStore';
 import { inr } from '../lib/format';
+import { WhatsAppLink } from '../components/WhatsAppLink';
 import {
   Avatar,
   Badge,
@@ -257,6 +258,9 @@ export const SettingsPage: React.FC = () => {
             </div>
           </form>
         </Panel>
+
+        {/* WhatsApp */}
+        <WhatsAppLink />
 
         {/* Settle-up reminders */}
         <Panel>

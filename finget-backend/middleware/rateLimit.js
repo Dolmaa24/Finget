@@ -104,7 +104,26 @@ const tokenMintLimiter = rateLimit({
   keyGenerator: byUser,
 });
 
+/**
+ * Sending a WhatsApp linking code.
+ *
+ * Tight, because each call sends a real message to a number the caller typed.
+ * Without a cap, an account is a free way to make Finget's business number
+ * repeatedly message a stranger — the cost lands on the recipient and on the
+ * sender's reputation with Meta, neither of which the caller pays.
+ */
+const phoneLinkLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  keyGenerator: byUser,
+  message: {
+    msg: "Too many linking codes requested. Wait an hour, or check the number you entered.",
+  },
+});
+
 module.exports = {
+  phoneLinkLimiter,
   shareCreateLimiter,
   sharePublicLimiter,
   inviteCodeLimiter,

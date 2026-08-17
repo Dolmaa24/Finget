@@ -28,12 +28,15 @@ const FEATURES = [
   {
     icon: <Users className="w-5 h-5" />,
     title: 'Friends mode',
-    body: 'Flip one switch and the whole app becomes a shared wallet — pooled income, split expenses, one settle-up sheet.',
+    body: 'Flip one switch and the whole app becomes a shared wallet — split expenses, shared goals, one settle-up sheet.',
   },
 ];
 
 const FRIENDS_FEATURES = [
-  { icon: <Split className="w-4 h-4" />, label: 'Equal or custom splits' },
+  // "Pooled income" is gone from this list on purpose: income is pooled only
+  // for the members who opt in, and a landing page promising otherwise would
+  // be the first thing a new group finds untrue.
+  { icon: <Split className="w-4 h-4" />, label: 'Equal, by-income or custom splits' },
   { icon: <Scale className="w-4 h-4" />, label: 'Minimal settle-up' },
   { icon: <Target className="w-4 h-4" />, label: 'Shared goals' },
   { icon: <MessageSquare className="w-4 h-4" />, label: 'Group AI coach' },

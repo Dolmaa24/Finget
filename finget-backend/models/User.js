@@ -43,6 +43,40 @@ const userSchema = new mongoose.Schema(
     upiId: { type: String, trim: true, maxlength: 128 },
 
     /**
+     * WhatsApp number, in bare E.164 digits (no `+`, no spaces).
+     *
+     * ONE REPRESENTATION, ENFORCED. Meta reports `wa_id` as digits, people type
+     * `+91 98765 43210`, and a webhook that fails to match a linked number
+     * reads to the user as the bot ignoring them. Everything goes through
+     * `whatsappService.normalisePhone` before it touches this field.
+     *
+     * Unique and sparse: one Finget account per number, because the number IS
+     * the credential over WhatsApp — there is no password in that channel, so
+     * two accounts claiming one number would mean messages authenticating as
+     * whichever the query happened to return.
+     *
+     * Set ONLY after the code has been replied. An unverified number is stored
+     * in `phoneLink.pendingPhone`, never here.
+     */
+    phone: { type: String, unique: true, sparse: true, index: true },
+    phoneVerifiedAt: Date,
+
+    /**
+     * In-flight number linking.
+     *
+     * The code is stored HASHED. It is a short-lived credential that grants
+     * write access to someone's ledger from a phone number, and a database
+     * dump should not hand that over any more than it hands over passwords.
+     */
+    phoneLink: {
+      pendingPhone: String,
+      codeHash: String,
+      expiresAt: Date,
+      attempts: { type: Number, default: 0 },
+      requestedAt: Date,
+    },
+
+    /**
      * Silent Collector opt-outs, owned by the person being reminded.
      *
      * Deliberately a mute rather than a delete: the debt still exists and is

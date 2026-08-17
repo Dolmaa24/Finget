@@ -177,10 +177,29 @@ function suggestSettlementsPaise(balancesPaise) {
   return transfers;
 }
 
+/**
+ * Weights for one group's participants, read live from its populated members.
+ *
+ * Lives here rather than in a controller because three callers now need it —
+ * the split preview, the transaction write, and the WhatsApp handler — and a
+ * service reaching into a controller to get it would have been backwards.
+ *
+ * @param {object} group populated with `members` carrying `monthlyIncome`
+ * @param {string[]} participantIds
+ */
+function groupIncomeWeights(group, participantIds) {
+  const optedIn = new Set((group.incomeSharing || []).map((entry) => idOf(entry.userId)));
+  const incomeByUserId = new Map(
+    (group.members || []).map((m) => [idOf(m), Number(m.monthlyIncome) || 0])
+  );
+  return resolveIncomeWeights(participantIds, incomeByUserId, optedIn);
+}
+
 module.exports = {
   equalSplit,
   weightedSplit,
   resolveIncomeWeights,
+  groupIncomeWeights,
   relativeShareLabel,
   computeBalancesPaise,
   suggestSettlementsPaise,

@@ -7,7 +7,7 @@ const { isGroupMember, isGroupAdmin, idOf } = require("../utils/groupAuth");
 const {
   computeBalancesPaise,
   suggestSettlementsPaise,
-  resolveIncomeWeights,
+  groupIncomeWeights,
   relativeShareLabel,
 } = require("../services/splitService");
 const { computeTripStatus, paceMessage, spentPaiseFrom } = require("../services/tripService");
@@ -595,18 +595,14 @@ exports.setIncomeSharing = async (req, res) => {
 };
 
 /**
- * Read the group's weights for a set of participants.
+ * The group's weights for a set of participants.
  *
- * Shared by the preview endpoint and by the transaction write, so what the Add
- * sheet shows and what actually gets stored can never be computed differently.
+ * Shared by the preview endpoint, the transaction write and the WhatsApp
+ * handler, so what the Add sheet shows, what gets stored, and what the bot
+ * confirms can never be computed three different ways. The implementation
+ * lives in `services/splitService.js`; this is the name the controllers use.
  */
-function weightsForGroup(group, participantIds) {
-  const optedIn = new Set((group.incomeSharing || []).map((entry) => idOf(entry.userId)));
-  const incomeByUserId = new Map(
-    (group.members || []).map((m) => [idOf(m), Number(m.monthlyIncome) || 0])
-  );
-  return resolveIncomeWeights(participantIds, incomeByUserId, optedIn);
-}
+const weightsForGroup = groupIncomeWeights;
 
 exports.weightsForGroup = weightsForGroup;
 

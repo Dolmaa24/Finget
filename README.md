@@ -126,7 +126,37 @@ date ±1 day, and fuzzy merchant. Categories are suggested from the person's own
 corrections first (a plain merchant→category map, no ML), then a small seed list. **No
 image is ever stored** — read once, discarded, and the UI says so.
 
-### 9. Context-aware AI coach
+### 9. Log by WhatsApp
+The fastest way to log a ₹450 dinner is not to open an app. Message Finget the way you'd
+text a friend — *450 dinner split with Goa* — and it books the expense, splits it, and
+replies with the confirmation **and what it just cost you**: *"That's 3 days of your Goa
+trip."* That reply is the product's whole argument, delivered in the app the group is
+already arguing about money in.
+
+- **Deterministic parser first.** Amounts (`₹1,250.50`, `2k`), categories, groups and
+  split mode are read by regex with no key and no network call. These are private
+  messages; the ordinary path must not ship them anywhere. The model is a fallback.
+- **The number is the credential**, so linking is the security boundary: a code is sent
+  **to** the number over WhatsApp and must be replied **from** it. Confirming it in the
+  web app would only prove you still had the session you already had. The code is stored
+  hashed, expires in 15 minutes, and dies after five wrong tries.
+- **An unlinked number can never write.** Not an expense, not a settlement, not even a
+  balance read — and it gets exactly *one* reply per hour, so the number cannot be used as
+  a free SMS gateway and the silence leaks nothing about who has an account.
+- **Every write is reversible for ten minutes** and says so in the same breath. Reply
+  *UNDO* and the row is deleted, not offset by a compensating one.
+- **Signature-verified, replay-safe.** HMAC-SHA256 over the raw bytes — which is why the
+  webhook mounts its own body parser above the global one. Meta redelivers whenever it
+  doesn't get a prompt 200, so the provider's message id is claimed under a unique index
+  before anything happens; three redeliveries of one *450 dinner* produce one transaction.
+- **Provider-agnostic.** Everything Meta-shaped lives in one adapter behind a normalised
+  `{ providerMessageId, from, text }`. Swapping in Twilio or a self-hosted bridge is an
+  adapter, not a rewrite — and the day that's needed is not the day to discover a
+  controller destructuring `entry[0].changes[0].value.messages[0]`.
+
+Unconfigured, the feature is cleanly off and Settings says so.
+
+### 10. Context-aware AI coach
 Streams over SSE with persistent per-scope conversation memory. Its figures come from
 the database, not from the client, so the numbers it quotes are always the real ones.
 
@@ -265,6 +295,11 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `POST` | `/api/groups/:id/mute-reminders` | Mute the Silent Collector for this group, for yourself |
 | `GET` | `/api/notifications` | In-app notifications + unread count |
 | `POST` | `/api/notifications/read` | Mark one, several, or all as read |
+| `GET` | `/api/whatsapp/webhook` | **Public** — Meta's registration challenge |
+| `POST` | `/api/whatsapp/webhook` | **Public** — inbound messages, gated by an HMAC signature over the raw body |
+| `GET` | `/api/whatsapp/status` | Whether your number is linked, and whether this server supports it |
+| `POST` | `/api/whatsapp/link/start` | Send a linking code to a number |
+| `POST` | `/api/whatsapp/link/stop` | Unlink |
 | `POST` | `/api/ai/coach` | SSE coach stream |
 | `GET/DELETE` | `/api/ai/coach/history` | Per-scope conversation |
 | `GET` | `/api/ai/insights` | Rule + AI insights |
@@ -290,13 +325,22 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `GET` | `/s/:token` | **Public** share card page (HTML + Open Graph) |
 | `GET` | `/s/:token.png` | **Public** share card image, 1200×630 PNG |
 
-All `/api` routes except signup, login and health require
-`Authorization: Bearer <token>`. `/s/:token` and `/join/:previewToken` are
-deliberately public — they are the **only two** routes that return user data
-without authentication. Everything `/s` serves has passed the redaction
-serialiser in `services/shareCardService.js`; everything `/join` serves comes
-from `services/tripPreviewService.js`, which is the single place that decides
-what a stranger may see.
+All `/api` routes except signup, login, health and the WhatsApp webhook require
+`Authorization: Bearer <token>`.
+
+Three routes are reachable without a session, each for a different reason and
+each with its own gate:
+
+- `/s/:token` and `/join/:previewToken` are the **only two that return user
+  data** unauthenticated. Everything `/s` serves has passed the redaction
+  serialiser in `services/shareCardService.js`; everything `/join` serves comes
+  from `services/tripPreviewService.js`, the single place that decides what a
+  stranger may see.
+- `/api/whatsapp/webhook` returns nothing, but **writes**. Meta has no account
+  here, so its gate is an HMAC-SHA256 signature over the raw request body,
+  checked before the payload is even parsed. With no app secret configured it
+  fails closed and refuses every delivery — an unverified webhook is an open
+  write endpoint, and "we hadn't set the secret yet" is exactly how one ships.
 
 ### Scoped tokens
 

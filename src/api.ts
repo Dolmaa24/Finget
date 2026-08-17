@@ -823,6 +823,35 @@ export const groupApi = {
   activity: (id: string) => api<ActivityItem[]>(`/groups/${id}/activity`),
 };
 
+/* ------------------------- whatsapp --------------------------- */
+
+export interface WhatsAppStatus {
+  /** Whether YOU have linked a number. */
+  linked: boolean;
+  phone: string | null;
+  verifiedAt: string | null;
+  /** A number awaiting its code, if a link is in flight. */
+  pendingPhone: string | null;
+  pendingExpiresAt: string | null;
+  attemptsLeft: number | null;
+  /** Whether this SERVER has WhatsApp configured at all. */
+  available: boolean;
+  unavailableReason: string | null;
+}
+
+export const whatsappApi = {
+  status: () => api<WhatsAppStatus>('/whatsapp/status'),
+
+  /** Sends a code to the number. It must be replied to *on WhatsApp*. */
+  startLink: (phone: string) =>
+    api<{ msg: string; expiresAt: string }>('/whatsapp/link/start', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+
+  unlink: () => api<{ msg: string }>('/whatsapp/link/stop', { method: 'POST' }),
+};
+
 /* ----------------------- notifications ------------------------ */
 
 export interface Notification {
