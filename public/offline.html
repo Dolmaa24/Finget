@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#e7e0d8" />
+    <title>Finget — offline</title>
+    <style>
+      :root {
+        --ground: #e7e0d8;
+        --ink: #3c3028;
+        --ink-2: #6b5b4e;
+        --ink-3: #8f8175;
+        --accent: #5b54d6;
+        --safe: #2f855a;
+        --warn: #b7791f;
+        --risk: #c53030;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: var(--ground);
+        color: var(--ink);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .card {
+        width: 100%;
+        max-width: 380px;
+        background: rgb(255 255 255 / 0.62);
+        border: 1px solid rgb(255 255 255 / 0.75);
+        border-radius: 24px;
+        padding: 28px;
+        box-shadow: 0 10px 40px rgb(60 48 40 / 0.08);
+      }
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        font-weight: 600;
+        margin: 0 0 14px;
+      }
+      .number {
+        font-size: 46px;
+        font-weight: 300;
+        letter-spacing: -0.02em;
+        margin: 0;
+        line-height: 1.1;
+        font-variant-numeric: tabular-nums;
+      }
+      .context { font-size: 14px; color: var(--ink-2); margin: 10px 0 0; }
+      /*
+        The staleness line is not a footnote — it is the reason this page is
+        allowed to show a number at all. Styled to be read, not skimmed past.
+      */
+      .stale {
+        margin: 20px 0 0;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: rgb(183 121 31 / 0.12);
+        color: #7c5411;
+        font-size: 13px;
+        line-height: 1.5;
+        font-weight: 500;
+      }
+      .empty { font-size: 14.5px; color: var(--ink-2); line-height: 1.6; margin: 0; }
+      .retry {
+        margin-top: 22px;
+        width: 100%;
+        height: 46px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .retry:active { transform: scale(0.98); }
+      .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; }
+      .brand img { width: 30px; height: 30px; border-radius: 9px; }
+      .brand span { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+      .risk-Safe { color: var(--safe); }
+      .risk-Warning { color: var(--warn); }
+      .risk-Risky { color: var(--risk); }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="brand">
+        <img src="/icon-192.png" alt="" />
+        <span>Finget</span>
+      </div>
+      <div id="content">
+        <p class="empty">You're offline. Reconnect to see today's number.</p>
+      </div>
+      <button class="retry" onclick="location.reload()">Try again</button>
+    </main>
+
+    <script>
+      /**
+       * Show the last known number, and ONLY alongside how old it is.
+       *
+       * The whole point of Finget is a number you act on in a shop. Showing a
+       * cached one as though it were current is the app confidently telling
+       * someone to spend money they may no longer have — so if the age cannot
+       * be established, nothing is shown at all.
+       *
+       * TWO SOURCES, deliberately, because two different clients populate them:
+       *
+       *   localStorage   written by the React app on every successful
+       *                  affordability load (`rememberAmbient` in lib/pwa.ts).
+       *                  This is the one that exists for a normal user.
+       *   Cache Storage  the service worker's copy of `/api/finance/ambient`,
+       *                  populated when something actually calls that endpoint —
+       *                  a widget shim, or a future poll. Checked second because
+       *                  today it is usually empty.
+       *
+       * Whichever is FRESHER wins.
+       */
+      (async () => {
+        const el = document.getElementById('content');
+
+        /** @returns {{safeDaily:number, risk?:string, context?:string, cachedAt:string}|null} */
+        async function fromCacheStorage() {
+          if (!('caches' in window)) return null;
+          try {
+            const names = await caches.keys();
+            const ambientName = names.find((n) => n.startsWith('finget-ambient-'));
+            if (!ambientName) return null;
+
+            const cache = await caches.open(ambientName);
+            const requests = await cache.keys();
+            if (requests.length === 0) return null;
+
+            const response = await cache.match(requests[0]);
+            if (!response) return null;
+
+            const cachedAt = response.headers.get('x-finget-cached-at');
+            const data = await response.json();
+            if (!cachedAt || typeof data.safeDaily !== 'number') return null;
+            return { ...data, cachedAt };
+          } catch {
+            return null;
+          }
+        }
+
+        function fromLocalStorage() {
+          try {
+            const raw = localStorage.getItem('finget_last_ambient');
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (typeof parsed?.safeDaily !== 'number' || !parsed?.cachedAt) return null;
+            return parsed;
+          } catch {
+            return null;
+          }
+        }
+
+        try {
+          const candidates = [fromLocalStorage(), await fromCacheStorage()].filter(Boolean);
+          if (candidates.length === 0) return;
+
+          const data = candidates.sort(
+            (a, b) => new Date(b.cachedAt) - new Date(a.cachedAt)
+          )[0];
+
+          const ageMs = Date.now() - new Date(data.cachedAt).getTime();
+          const minutes = Math.round(ageMs / 60000);
+          const hours = Math.round(ageMs / 3600000);
+          const days = Math.round(ageMs / 86400000);
+
+          let when;
+          if (minutes < 1) when = 'moments ago';
+          else if (minutes < 60) when = minutes + (minutes === 1 ? ' minute ago' : ' minutes ago');
+          else if (hours < 24) when = hours + (hours === 1 ? ' hour ago' : ' hours ago');
+          else when = days + (days === 1 ? ' day ago' : ' days ago');
+
+          const amount = '₹' + Math.round(data.safeDaily).toLocaleString('en-IN');
+          const risk = ['Safe', 'Warning', 'Risky'].includes(data.risk) ? data.risk : 'Safe';
+
+          el.innerHTML =
+            '<p class="eyebrow">Last known safe to spend</p>' +
+            '<p class="number risk-' + risk + '"></p>' +
+            '<p class="context"></p>' +
+            '<p class="stale">This is not live. It was correct <strong></strong>, ' +
+            'before you went offline — your actual number may have moved since.</p>';
+
+          // Assigned as text, never as markup: `context` is server-generated
+          // but this page must not become an injection point regardless.
+          el.querySelector('.number').textContent = amount;
+          el.querySelector('.context').textContent = data.context || '';
+          el.querySelector('.stale strong').textContent = when;
+        } catch {
+          /* Leave the plain offline message in place. */
+        }
+      })();
+    </script>
+  </body>
+</html>

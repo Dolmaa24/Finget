@@ -5,6 +5,7 @@ const {
   predictiveBalanceNote,
   goalPaceCheck,
   weekendSpendPattern,
+  weekendPreWarning,
   groupContributionBalance,
 } = require("./ruleEngine");
 const { generateAIInsights } = require("./aiInsights");
@@ -26,6 +27,10 @@ exports.orchestrateInsights = async (
     predictiveBalanceNote(transactions, currentAffordability),
     goalPaceCheck(goals, currentAffordability),
     weekendSpendPattern(transactions),
+    // Forward-looking, and only fires Thursday/Friday. Placed before the
+    // retrospective pattern rule in importance terms: a warning that can still
+    // change the weekend beats an observation about past ones.
+    weekendPreWarning(transactions, currentAffordability),
     groupContributionBalance(transactions, memberCount),
   ].filter(Boolean);
 

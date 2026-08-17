@@ -156,7 +156,40 @@ already arguing about money in.
 
 Unconfigured, the feature is cleanly off and Settings says so.
 
-### 10. Context-aware AI coach
+### 10. The ambient number (PWA)
+The value is a number at the point of sale, and that should never require opening an app.
+Finget installs to a home screen, opens straight to today's figure, and works offline.
+
+One rule holds the whole milestone up: **a stale number is never shown without saying it
+is stale.** A cached figure presented as current is the app confidently telling someone to
+spend money they may no longer have. So the service worker stamps a fetch time onto the
+cached response, the offline shell refuses to render a number it cannot date, and an
+in-app bar names the age the moment the connection drops.
+
+- **`GET /api/finance/ambient`** — 175 bytes: the number, its risk, one deterministic line
+  of context, and `asOf`. No goals, no insight sweep, no model call, because a widget polls
+  this and a dashboard-sized payload would be a battery complaint. It carries three forms
+  of the figure — exact paise, a float matching `/affordability`, and a pre-formatted label
+  so nothing renders `₹2866.6666666666665`.
+- **A narrow token for it.** `ambient` is the most restricted scope in the app: read-only,
+  one route, no history. A credential sitting on a home screen should not be able to spend.
+- **Web Push, three events only**, each actionable at the moment it arrives: a vault
+  decision coming due (which the person explicitly asked for), a trip running hot while
+  there is still trip left, and a Friday heads-up when what's left won't cover a normal
+  weekend. Never a summary of what you already spent. Per-device topic switches, and
+  idempotent by construction through `PushLog`'s unique index.
+- **A notification carries a figure and a sentence** — never a merchant, a transaction, or
+  a list. Nothing about what you bought passes through Google's or Apple's servers.
+- **The weekend pre-warning is measured, not modelled**: *"₹800 left for the weekend; the
+  last three weekends you spent about ₹1,900."* Both halves come from money that actually
+  left the account. It stays silent rather than counting a no-data weekend as a ₹0 one,
+  because a person only believes that sentence the second time if it was true the first.
+- **Badging** shows what wants attention, not the rupee figure — the API caps display at
+  "99+", so an amount there would look meaningful and be nonsense.
+- Native widgets are a documented follow-up, deliberately not built —
+  see [docs/native-widgets.md](docs/native-widgets.md).
+
+### 11. Context-aware AI coach
 Streams over SSE with persistent per-scope conversation memory. Its figures come from
 the database, not from the client, so the numbers it quotes are always the real ones.
 
@@ -273,6 +306,11 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `POST` | `/api/auth/signup` · `/login` | Returns `{ token, user }` |
 | `GET/PUT` | `/api/auth/me` | Profile and monthly income |
 | `GET` | `/api/finance/affordability` | Safe-to-spend for the scope |
+| `GET` | `/api/finance/ambient` | **The widget payload** — number, risk, one line, `asOf`. Reachable with an `ambient`-scoped token |
+| `GET` | `/api/push/config` | VAPID public key + whether push is configured |
+| `POST` | `/api/push/subscribe` | Register this device |
+| `POST` | `/api/push/unsubscribe` | Drop this device |
+| `PUT` | `/api/push/topics` | Which notifications this device wants |
 | `POST` | `/api/finance/translate` | **Goal currency** — what a price costs in days of your goal |
 | `POST` | `/api/finance/simulate` | _Deprecated._ Rupee-denominated wrapper over `/translate` |
 | `POST` | `/api/finance/future-impact` | Habit-change projection |

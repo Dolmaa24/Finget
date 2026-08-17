@@ -3,8 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover` so the installed app can paint into the safe areas
+         rather than letterboxing itself on a notched phone. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#e7e0d8" />
+
+    <!-- Installable. `start_url` is /dashboard: someone who installed this has
+         an account, and landing them on the marketing page every time would be
+         the app's first act of forgetting who they are. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- iOS still ignores the manifest for these two. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Finget" />
     <meta
       name="description"
       content="Finget tells you what is safe to spend today — on your own, or across a shared wallet with friends."

@@ -1,4 +1,10 @@
-const { MS_DAY, istParts, fromISTFields, isWeekendIST } = require("../../utils/time");
+const {
+  MS_DAY,
+  istParts,
+  fromISTFields,
+  isWeekendIST,
+  startOfDayIST,
+} = require("../../utils/time");
 
 function toObject(t) {
   return t.toObject ? t.toObject() : t;
@@ -288,3 +294,132 @@ exports.groupContributionBalance = (transactions, memberCount) => {
     source: "rule",
   };
 };
+
+/**
+ * Weekend PRE-warning.
+ *
+ * Distinct from `weekendSpendPattern` above, and deliberately so: that one is
+ * retrospective ("you spend 2.1× more at weekends"), which is useful once and
+ * then just true. This one is a forecast delivered while it can still change
+ * the outcome — Thursday or Friday, comparing what is actually left against
+ * what the last three weekends actually cost.
+ *
+ *   "₹800 left for the weekend; the last three Fridays you spent ₹1,900."
+ *
+ * Both halves are measured, not modelled. No projection, no assumed rate, no
+ * model call — the number on the right is money that genuinely left the account
+ * on those days, which is the only version of this sentence a person will
+ * believe the second time they read it.
+ *
+ * Returns null on every day that is not the run-up to a weekend, and null when
+ * there is not enough history to say anything honest.
+ *
+ * @param {object[]} transactions
+ * @param {{remaining: number}} affordability
+ * @param {Date} [now]
+ */
+exports.weekendPreWarning = (transactions, affordability, now = new Date()) => {
+  const { weekday } = istParts(now);
+
+  // Thursday (4) and Friday (5) only. Saturday is too late to be a warning and
+  // Monday would be a scolding.
+  if (weekday !== 4 && weekday !== 5) return null;
+
+  const txs = transactions.map(toObject);
+  const expenses = txs.filter((t) => t.type === "expense");
+  if (expenses.length === 0) return null;
+
+  /**
+   * How far back the ledger actually goes.
+   *
+   * A weekend with no recorded spend is indistinguishable from a weekend
+   * BEFORE this person started using Finget, and averaging the second kind in
+   * as a ₹0 weekend quietly halves the figure — "the last three weekends you
+   * spent about ₹900" when the two real ones cost ₹1,900 each. The sentence
+   * has to be true or it should not be sent, so weekends older than the first
+   * transaction do not count and the rule stays silent until there are three
+   * real ones.
+   */
+  const earliestDay = startOfDayIST(
+    expenses.reduce(
+      (oldest, t) => (new Date(t.date) < oldest ? new Date(t.date) : oldest),
+      new Date(expenses[0].date)
+    )
+  );
+
+  /**
+   * The last three COMPLETED weekends, each Saturday+Sunday summed. Walked back
+   * day by day from today rather than bucketed by week number, so it does not
+   * break across a month or year boundary.
+   */
+  const weekendTotals = [];
+  let cursor = new Date(now.getTime() - MS_DAY);
+  let currentWeekend = null;
+  let guard = 0;
+
+  while (weekendTotals.length < 3 && guard < 40) {
+    guard += 1;
+
+    /**
+     * Walked back past the start of the ledger. Bank a weekend that is still
+     * open first — the day that CLOSES the oldest in-range weekend is itself
+     * out of range, and bailing before banking it would throw away a weekend
+     * that is entirely real.
+     */
+    if (startOfDayIST(cursor) < earliestDay) {
+      if (currentWeekend !== null) weekendTotals.push(currentWeekend);
+      break;
+    }
+
+    const isWeekendDay = isWeekendIST(cursor);
+
+    if (isWeekendDay) {
+      const dayTotal = expenses
+        .filter((t) => sameISTDay(new Date(t.date), cursor))
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+      currentWeekend = (currentWeekend || 0) + dayTotal;
+    } else if (currentWeekend !== null) {
+      // Walked off the front of a weekend — bank it and look for the next.
+      weekendTotals.push(currentWeekend);
+      currentWeekend = null;
+    }
+
+    cursor = new Date(cursor.getTime() - MS_DAY);
+  }
+
+  if (weekendTotals.length < 3) return null;
+
+  const typical = weekendTotals.reduce((s, v) => s + v, 0) / weekendTotals.length;
+
+  // Nothing to warn about if weekends cost nothing, and nothing to warn about
+  // if what is left comfortably covers one.
+  if (typical <= 0) return null;
+
+  const remaining = affordability?.remaining ?? 0;
+  if (remaining >= typical) return null;
+
+  const shortfall = typical - remaining;
+
+  return {
+    title: "This weekend will be tight",
+    description: `${inr(remaining)} left for the weekend; the last three weekends you spent about ${inr(
+      typical
+    )}.`,
+    actionable_tip:
+      remaining <= 0
+        ? "You are already past this month's room. Anything now comes out of next month."
+        : `Keeping the weekend under ${inr(remaining)} means closing the month level. That is ${inr(
+            shortfall
+          )} less than usual.`,
+    source: "rule",
+    /** Structured for the push sender, which cannot re-derive it from prose. */
+    meta: { remaining, typical, shortfall },
+  };
+};
+
+/** Same IST calendar day? Compared on parts, never on UTC timestamps. */
+function sameISTDay(a, b) {
+  const x = istParts(a);
+  const y = istParts(b);
+  return x.year === y.year && x.month === y.month && x.day === y.day;
+}

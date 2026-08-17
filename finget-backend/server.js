@@ -9,6 +9,7 @@ const { isAiConfigured, PROVIDER_NAME, MODEL } = require("./services/aiClient");
 const { isPaywallEnabled } = require("./services/entitlements");
 const { startVaultSweep } = require("./jobs/vaultSweep");
 const { startReminderSweep } = require("./jobs/reminderSweep");
+const { startPushSweep } = require("./jobs/pushSweep");
 const { createApp } = require("./app");
 
 if (!process.env.JWT_SECRET) {
@@ -77,4 +78,6 @@ server.listen(PORT, () => {
 
   startReminderSweep();
   console.log("Silent Collector: running hourly");
+
+  if (startPushSweep()) console.log("Web Push: sweeping every 15 minutes");
 });

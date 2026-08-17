@@ -17,6 +17,8 @@ import {
 import { useAuth } from '../context/authStore';
 import { useScope } from '../context/scopeStore';
 import { acquireSocket, getSocket } from '../lib/socket';
+import { inr } from '../lib/format';
+import { rememberAmbient } from '../lib/pwa';
 
 /** Shared shape for every async resource below. */
 interface Resource<T> {
@@ -98,7 +100,23 @@ const EMPTY_AFFORDABILITY: Affordability = {
 export function useAffordability() {
   const { scope, context, groupId, revision } = useScope();
   return useScopedResource<Affordability>(
-    () => financeApi.affordability(scope),
+    /**
+     * Every successful load also stows the number away, so an offline session
+     * has something to show. It is stored WITH its fetch time, and nothing may
+     * render it without saying how old it is — see `StalenessBanner`.
+     */
+    () =>
+      financeApi.affordability(scope).then((data) => {
+        rememberAmbient({
+          safeDaily: data.safeDaily,
+          risk: data.risk,
+          context: `${inr(data.remaining)} left, ${data.daysLeftInMonth} ${
+            data.daysLeftInMonth === 1 ? 'day' : 'days'
+          } to go.`,
+          label: data.scope === 'group' ? scope.groupId ?? null : null,
+        });
+        return data;
+      }),
     EMPTY_AFFORDABILITY,
     [context, groupId, revision]
   );

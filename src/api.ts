@@ -823,6 +823,67 @@ export const groupApi = {
   activity: (id: string) => api<ActivityItem[]>(`/groups/${id}/activity`),
 };
 
+/* -------------------------- ambient --------------------------- */
+
+/**
+ * The whole number, in one small payload. Cheap enough for a widget to poll,
+ * which is why it carries no goals, no transactions and no insights.
+ */
+export interface Ambient {
+  safeDaily: number;
+  safeDailyPaise: number;
+  /** Pre-formatted ("₹2,867"). Use this to draw; `safeDaily` is an exact float. */
+  safeDailyLabel: string;
+  risk: RiskLevel;
+  context: string;
+  scope: Scope;
+  label: string | null;
+  /** When the server computed it. Must be shown whenever it is rendered stale. */
+  asOf: string;
+}
+
+export const ambientApi = {
+  get: (scope: ScopeRef) =>
+    api<Ambient>(`/finance/ambient${buildQuery(scope.context, scope.groupId)}`),
+};
+
+/* ---------------------------- push ---------------------------- */
+
+export interface PushConfig {
+  available: boolean;
+  unavailableReason: string | null;
+  publicKey: string | null;
+  devices: number;
+}
+
+export interface PushTopics {
+  vaultExpiry: boolean;
+  tripPace: boolean;
+  weekendWarning: boolean;
+}
+
+export const pushApi = {
+  config: () => api<PushConfig>('/push/config'),
+
+  subscribe: (subscription: PushSubscriptionJSON) =>
+    api<{ msg: string; topics: PushTopics }>('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    }),
+
+  unsubscribe: (endpoint: string) =>
+    api<{ removed: number }>('/push/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint }),
+    }),
+
+  setTopics: (endpoint: string, topics: Partial<PushTopics>) =>
+    api<{ topics: PushTopics }>('/push/topics', {
+      method: 'PUT',
+      body: JSON.stringify({ endpoint, topics }),
+    }),
+};
+
 /* ------------------------- whatsapp --------------------------- */
 
 export interface WhatsAppStatus {

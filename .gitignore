@@ -27,3 +27,8 @@ dist-ssr
 .env
 .env.local
 finget-backend/.env
+
+# Agent worktree scaffolding — created by tooling, never project content.
+# `**/` because these appear beside any package (finget-backend/.claude/...),
+# and a pattern containing a mid-path slash is anchored to this file's directory.
+**/.claude/worktrees/

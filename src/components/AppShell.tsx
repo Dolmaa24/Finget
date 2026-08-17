@@ -25,6 +25,7 @@ import { ModeSwitch } from './ModeSwitch';
 import { Avatar } from './ui';
 import { AddTransactionModal } from './AddTransactionModal';
 import { NotificationBell } from './NotificationBell';
+import { StalenessBanner } from './StalenessBanner';
 
 interface NavItem {
   to: string;
@@ -225,6 +226,9 @@ export const AppShell: React.FC = () => {
           </nav>
         </div>
       )}
+
+      {/* Offline, and honest about how old the number on screen is. */}
+      <StalenessBanner />
 
       {/* ---------- Content ---------- */}
       <main className="px-4 sm:px-6 pb-24 lg:pb-12">

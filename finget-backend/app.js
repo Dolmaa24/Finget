@@ -85,6 +85,7 @@ function createApp() {
   app.use("/api/tokens", require("./routes/apiTokenRoutes"));
   app.use("/api/deflections", require("./routes/deflectionRoutes"));
   app.use("/api/notifications", require("./routes/notificationRoutes"));
+  app.use("/api/push", require("./routes/pushRoutes"));
   app.use("/api/share", require("./routes/shareCardRoutes"));
 
   /**

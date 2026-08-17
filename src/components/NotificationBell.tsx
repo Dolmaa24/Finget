@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, HandCoins, Sparkles, Trophy, Info } from 'lucide-react';
 import { notificationApi, type Notification } from '../api';
 import { inr, relativeDate } from '../lib/format';
+import { setAttentionBadge } from '../lib/pwa';
 import { Button, EmptyState } from './ui';
 
 const ICON: Record<Notification['kind'], React.ReactNode> = {
@@ -43,6 +44,12 @@ export const NotificationBell: React.FC = () => {
       const res = await notificationApi.list();
       setItems(res.notifications);
       setUnread(res.unreadCount);
+      /**
+       * The app-icon badge rides along with the unread count, since this is the
+       * one place that already knows it. Best-effort and unsupported on plenty
+       * of browsers — see `setAttentionBadge`.
+       */
+      void setAttentionBadge(res.unreadCount);
     } catch {
       // A failed poll is not worth a toast. The next one picks it up.
     }
@@ -109,6 +116,7 @@ export const NotificationBell: React.FC = () => {
 
   const markAllRead = async () => {
     setUnread(0);
+    void setAttentionBadge(0);
     setItems((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
       await notificationApi.markRead();

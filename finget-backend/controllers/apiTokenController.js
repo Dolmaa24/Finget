@@ -6,6 +6,13 @@ const User = require("../models/User");
 const MINTABLE = {
   translate: CAPABILITIES.BROWSER_EXTENSION,
   deflect: CAPABILITIES.BROWSER_EXTENSION,
+  /**
+   * Widgets are their own Plus capability, not the extension's — someone may
+   * well want the number on their home screen without ever installing a
+   * browser extension, and gating the two together would sell them the wrong
+   * thing.
+   */
+  ambient: CAPABILITIES.WIDGETS,
 };
 
 /** What the browser extension asks for when nothing is specified. */

@@ -18,6 +18,7 @@ import { useScope } from '../context/scopeStore';
 import { useToast } from '../context/toastStore';
 import { inr } from '../lib/format';
 import { WhatsAppLink } from '../components/WhatsAppLink';
+import { AmbientSettings } from '../components/AmbientSettings';
 import {
   Avatar,
   Badge,
@@ -258,6 +259,9 @@ export const SettingsPage: React.FC = () => {
             </div>
           </form>
         </Panel>
+
+        {/* PWA install, push notifications, badging */}
+        <AmbientSettings />
 
         {/* WhatsApp */}
         <WhatsAppLink />

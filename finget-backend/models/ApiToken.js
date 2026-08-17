@@ -32,13 +32,19 @@ const apiTokenSchema = new mongoose.Schema({
    *   deflect   — POST /api/deflections. Opens a 48-hour hold. Cannot resolve
    *               one and cannot read the ledger; the worst a stolen token
    *               does is ring-fence money that releases itself in 72 hours.
+   *   ambient   — GET /api/finance/ambient. READ-ONLY, and the narrowest read
+   *               in the app: today's number, its risk level, and one line of
+   *               context. No transactions, no goals, no group, no history. It
+   *               exists so a home-screen widget or lock-screen shim — which
+   *               has no browser session to borrow — can poll the number
+   *               without holding a credential that could spend anything.
    *
    * Adding to this enum means reviewing what the new entry unlocks.
    */
   scopes: {
     type: [String],
     required: true,
-    enum: ["translate", "deflect"],
+    enum: ["translate", "deflect", "ambient"],
     default: ["translate"],
     validate: [(v) => Array.isArray(v) && v.length > 0, "a token needs at least one scope"],
   },

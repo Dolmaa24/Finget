@@ -13,6 +13,15 @@ const { toPaise } = require("../utils/money");
 const { generateAutoBudget } = require("../services/budgetService");
 const { simulateHabitChange } = require("../services/futureImpactService");
 
+/**
+ * Rupees for display. The fifth local copy of this in the backend — see the
+ * others in ruleEngine, goalCurrencyService, whatsappHandler and
+ * shareCardCopy. They are not quite identical (shareCardCopy deliberately does
+ * not round), which is exactly why collapsing them is its own change and not a
+ * side effect of this one.
+ */
+const inr = (rupees) => `₹${Math.round(rupees).toLocaleString("en-IN")}`;
+
 exports.getAffordability = async (req, res) => {
   try {
     const scope = await resolveScope({
@@ -33,6 +42,77 @@ exports.getAffordability = async (req, res) => {
        * really one person's, is worse than showing nothing.
        */
       incomeContributors: scope.isGroup ? scope.incomeContributors : 1,
+    });
+  } catch (err) {
+    handleScopeError(err, res);
+  }
+};
+
+/**
+ * `GET /api/finance/ambient` — the number, and nothing else.
+ *
+ * This is the payload a home-screen widget, a watch face, or a lock-screen
+ * shim polls, and it is built to be POLLED: one scope resolve, no goal
+ * queries, no insight sweep, no AI, no share cards. `/affordability` returns a
+ * dozen fields because a dashboard uses all of them; a widget renders one
+ * number and one line, and making it pay for the dozen is how a battery gets
+ * eaten by a number nobody reads.
+ *
+ * `asOf` is not decoration. Every consumer of this endpoint is somewhere it
+ * might be shown offline — a cached widget, an installed PWA with no signal —
+ * and the one unforgivable failure mode is displaying yesterday's number as
+ * though it were today's. Anything rendering this MUST show `asOf` when the
+ * fetch did not just succeed.
+ */
+exports.getAmbient = async (req, res) => {
+  try {
+    const scope = await resolveScope({
+      userId: req.user,
+      context: req.query.context,
+      groupId: req.query.groupId,
+    });
+
+    const a = affordabilityForScope(scope);
+
+    /**
+     * One line, chosen deterministically. No model call — a widget cannot wait
+     * for one, and a number that sometimes arrives with a sentence and
+     * sometimes without reads as broken.
+     */
+    let context;
+    if (a.remaining < 0) {
+      context = `Over by ${inr(Math.abs(a.remaining))} this month.`;
+    } else if (a.risk === "Warning") {
+      context = `${inr(a.remaining)} left, below your buffer.`;
+    } else if (a.held > 0) {
+      context = `${inr(a.remaining)} left · ${inr(a.held)} on hold.`;
+    } else {
+      context = `${inr(a.remaining)} left, ${a.daysLeftInMonth} ${
+        a.daysLeftInMonth === 1 ? "day" : "days"
+      } to go.`;
+    }
+
+    res.json({
+      /**
+       * Three forms of the same figure, and each earns its place:
+       *
+       *   safeDailyPaise  the exact contract, an integer, for anything doing maths
+       *   safeDaily       rupees, matching `/affordability` exactly so the two
+       *                   endpoints can never be seen to disagree — which means
+       *                   it is an unrounded float (₹2866.666…)
+       *   safeDailyLabel  ready to draw. A widget that printed `safeDaily`
+       *                   directly would render "₹2866.6666666666665", so the
+       *                   formatting is done once here rather than wrongly in
+       *                   every consumer.
+       */
+      safeDaily: a.safeDaily,
+      safeDailyPaise: toPaise(a.safeDaily),
+      safeDailyLabel: inr(a.safeDaily),
+      risk: a.risk,
+      context,
+      scope: scope.isGroup ? "group" : "user",
+      label: scope.isGroup ? scope.group.name : null,
+      asOf: new Date().toISOString(),
     });
   } catch (err) {
     handleScopeError(err, res);
