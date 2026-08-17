@@ -43,6 +43,24 @@ const userSchema = new mongoose.Schema(
     upiId: { type: String, trim: true, maxlength: 128 },
 
     /**
+     * Free-tier AI coach usage for the current IST month.
+     *
+     * DELIBERATELY NOT COUNTED FROM `AIConversation`. That collection is the
+     * chat history, and `DELETE /api/ai/coach/history` empties it — so a quota
+     * derived from it would reset every time someone cleared their chat, which
+     * is a one-tap bypass of the only metered cost in the product.
+     *
+     * `monthKey` is an IST `YYYY-MM` string rather than a rolling window: a
+     * calendar month is what the pricing page promises, and a string comparison
+     * makes the reset a single equality check with no date arithmetic at read
+     * time.
+     */
+    coachUsage: {
+      monthKey: String,
+      count: { type: Number, default: 0 },
+    },
+
+    /**
      * WhatsApp number, in bare E.164 digits (no `+`, no spaces).
      *
      * ONE REPRESENTATION, ENFORCED. Meta reports `wa_id` as digits, people type

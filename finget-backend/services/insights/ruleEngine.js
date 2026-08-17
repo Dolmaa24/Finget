@@ -5,12 +5,11 @@ const {
   isWeekendIST,
   startOfDayIST,
 } = require("../../utils/time");
+const { inr } = require("../../utils/format");
 
 function toObject(t) {
   return t.toObject ? t.toObject() : t;
 }
-
-const inr = (n) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
 /**
  * Recurring-charge detector.

@@ -5,6 +5,7 @@ const Settlement = require("../models/Settlement");
 const BotAction = require("../models/BotAction");
 const { idOf } = require("../utils/groupAuth");
 const { toPaise, fromPaise } = require("../utils/money");
+const { inr } = require("../utils/format");
 const { parseMessage } = require("./messageParser");
 const { completeLink } = require("./phoneLinkService");
 const { sendText, formatPhone } = require("./whatsappService");
@@ -57,8 +58,6 @@ const MAX_MESSAGES_PER_HOUR = 60;
 /* ------------------------------------------------------------------ */
 /* Copy                                                                */
 /* ------------------------------------------------------------------ */
-
-const inr = (rupees) => `₹${Number(rupees).toLocaleString("en-IN")}`;
 
 const HELP = [
   "Here's what I understand:",

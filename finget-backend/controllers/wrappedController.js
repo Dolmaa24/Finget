@@ -1,6 +1,8 @@
 const Group = require("../models/Group");
+const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const Settlement = require("../models/Settlement");
+const { can, explain, CAPABILITIES } = require("../services/entitlements");
 const { isGroupMember, idOf } = require("../utils/groupAuth");
 const { computeWrapped, wrappedCardPayload } = require("../services/wrappedService");
 const { createCard, RedactionError } = require("../services/shareCardService");
@@ -125,6 +127,26 @@ exports.shareWrapped = async (req, res) => {
 
     if (group.kind !== "trip") {
       return res.status(400).json({ msg: "Wrapped is for trips." });
+    }
+
+    /**
+     * SEEING the recap is free; MINTING a shareable card is the Plus feature.
+     *
+     * That split is deliberate. The recap is the payoff for a trip the group
+     * already logged, and paywalling it would be charging for work they did.
+     * The exportable card is the thing with a marketing cost attached — it
+     * renders a PNG, it holds a public token for 90 days, and it is what gets
+     * posted to a group chat.
+     *
+     * Group-grantable, so a ₹199 Trip Pass covers every member of the trip. The
+     * organiser buying it is exactly who wants the card to exist.
+     */
+    const actor = await User.findById(req.user).select("entitlements").lean();
+    if (!can(actor, CAPABILITIES.WRAPPED_EXPORT, { group })) {
+      return res.status(403).json({
+        msg: `${explain(CAPABILITIES.WRAPPED_EXPORT)} The recap itself stays open — this is only the shareable card.`,
+        capability: CAPABILITIES.WRAPPED_EXPORT,
+      });
     }
 
     const [transactions, settlements] = await Promise.all([

@@ -1,8 +1,8 @@
 const { toPaise, fromPaise, sumPaise } = require("../utils/money");
+const { inr } = require("../utils/format");
 const { startOfDayIST, MS_DAY } = require("../utils/time");
 const { computeBalancesPaise, suggestSettlementsPaise } = require("./splitService");
 const { firstNameOf } = require("./shareCardService");
-const { inr } = require("./shareCardCopy");
 const { inclusiveDaySpan } = require("./tripService");
 
 /**

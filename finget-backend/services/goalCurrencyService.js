@@ -1,4 +1,5 @@
 const { toPaise, fromPaise } = require("../utils/money");
+const { inr } = require("../utils/format");
 const { goalsForScope, affordabilityForScope } = require("./scopeResolver");
 
 /**
@@ -16,8 +17,6 @@ const { goalsForScope, affordabilityForScope } = require("./scopeResolver");
  */
 
 const PRIORITY_RANK = { High: 3, Medium: 2, Low: 1 };
-
-const inr = (rupees) => `₹${Math.round(rupees).toLocaleString("en-IN")}`;
 
 /** Sort key: strongest claim on the headline first. */
 function compareGoalClaim(a, b) {

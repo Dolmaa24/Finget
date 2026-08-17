@@ -8,6 +8,8 @@ const {
 } = require("../services/scopeResolver");
 const { orchestrateInsights } = require("../services/insights/insightOrchestrator");
 const { buildCoachContext } = require("../services/coachContextBuilder");
+const { consumeCoachMessage, coachUsageFor } = require("../services/coachQuota");
+const { CAPABILITIES } = require("../services/entitlements");
 
 /** One conversation thread per user per scope. */
 function conversationQuery(userId, context, groupId) {
@@ -64,6 +66,41 @@ exports.moneyCoach = async (req, res) => {
       res.setHeader("Connection", "keep-alive");
       res.flushHeaders?.();
       res.write(`data: ${JSON.stringify({ text: AI_DISABLED_MESSAGE })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      return res.end();
+    }
+
+    /**
+     * The free-tier meter, claimed only now.
+     *
+     * Placed AFTER the `isAiConfigured` check above on purpose: a question asked
+     * on a server with no API key never reaches a model, so it costs nothing and
+     * must not burn an allowance. It is claimed BEFORE the model call, because
+     * the whole point is not making that call.
+     *
+     * When the allowance is spent, the answer arrives down the SSE stream as a
+     * normal coach reply rather than as an HTTP error. The paywall rule is to
+     * never block someone mid-action — and a red error toast where a
+     * conversation should be is exactly that. The coach says, in its own voice,
+     * what it can no longer do and what still works. `paywall` rides along so
+     * the client can offer the upgrade without parsing prose.
+     */
+    const quota = await consumeCoachMessage(req.user);
+    if (!quota.allowed) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+      res.write(
+        `data: ${JSON.stringify({
+          text: quota.message,
+          paywall: {
+            capability: CAPABILITIES.UNLIMITED_COACH,
+            used: quota.used,
+            limit: quota.limit,
+          },
+        })}\n\n`
+      );
       res.write("data: [DONE]\n\n");
       return res.end();
     }
@@ -197,5 +234,23 @@ exports.getInsights = async (req, res) => {
     res.json({ ...insightsData, aiEnabled: isAiConfigured() });
   } catch (err) {
     handleScopeError(err, res);
+  }
+};
+
+/**
+ * `GET /api/ai/coach/usage` — how much of the free allowance is left.
+ *
+ * Exists so the coach page can show the meter BEFORE someone hits the wall. A
+ * limit you only discover by exceeding it feels like a trap; one you can see
+ * coming is just a limit.
+ *
+ * A read, and only a read — it never resets a stale month, because two tabs
+ * opening the page would then race on the same document.
+ */
+exports.getCoachUsage = async (req, res) => {
+  try {
+    res.json(await coachUsageFor(req.user));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };

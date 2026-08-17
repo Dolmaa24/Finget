@@ -9,7 +9,7 @@
  * Payloads reaching here have already passed `assertRedacted`.
  */
 
-const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+const { inr } = require("../utils/format");
 
 /** Tone check: a card is something you'd want to send, never a scolding. */
 function describe(card) {
@@ -95,4 +95,4 @@ function statLine(card) {
 /** The trust line. It appears on every card because it is the positioning. */
 const TRUST_LINE = "No ads. No selling data. Finget never holds your money.";
 
-module.exports = { describe, statLine, inr, RISK_LINE, TRUST_LINE };
+module.exports = { describe, statLine, RISK_LINE, TRUST_LINE };

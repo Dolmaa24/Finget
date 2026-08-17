@@ -10,17 +10,9 @@ const {
 const { simulatePurchase } = require("../services/simulationService");
 const { translate } = require("../services/goalCurrencyService");
 const { toPaise } = require("../utils/money");
+const { inr } = require("../utils/format");
 const { generateAutoBudget } = require("../services/budgetService");
 const { simulateHabitChange } = require("../services/futureImpactService");
-
-/**
- * Rupees for display. The fifth local copy of this in the backend — see the
- * others in ruleEngine, goalCurrencyService, whatsappHandler and
- * shareCardCopy. They are not quite identical (shareCardCopy deliberately does
- * not round), which is exactly why collapsing them is its own change and not a
- * side effect of this one.
- */
-const inr = (rupees) => `₹${Math.round(rupees).toLocaleString("en-IN")}`;
 
 exports.getAffordability = async (req, res) => {
   try {

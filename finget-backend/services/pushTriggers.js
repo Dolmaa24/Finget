@@ -5,6 +5,7 @@ const User = require("../models/User");
 const PushLog = require("../models/PushLog");
 const PushSubscription = require("../models/PushSubscription");
 const { fromPaise } = require("../utils/money");
+const { inr } = require("../utils/format");
 const { istParts, startOfDayIST } = require("../utils/time");
 const { computeTripStatus, spentPaiseFrom } = require("./tripService");
 const { weekendPreWarning } = require("./insights/ruleEngine");
@@ -29,8 +30,6 @@ const { isPushConfigured, sendToUser } = require("./pushService");
  * run on intervals that can fire twice after a crash or concurrently on two
  * instances, and a duplicate push is what makes someone turn them off.
  */
-
-const inr = (rupees) => `₹${Math.round(rupees).toLocaleString("en-IN")}`;
 
 /** The IST calendar day, as a stable string for dedupe keys. */
 function istDayKey(now = new Date()) {

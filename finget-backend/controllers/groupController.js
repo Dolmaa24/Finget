@@ -14,7 +14,7 @@ const { computeTripStatus, paceMessage, spentPaiseFrom } = require("../services/
 const { groupIdForPreviewToken } = require("../services/tripPreviewService");
 const { buildUpiIntent } = require("../services/upiIntent");
 const { toPaise, fromPaise, allocatePaise, splitPaise } = require("../utils/money");
-const { can, explain, CAPABILITIES } = require("../services/entitlements");
+const { can, explain, CAPABILITIES, FREE_LIMITS } = require("../services/entitlements");
 
 /**
  * Shared shape for every group payload the client receives.
@@ -154,6 +154,33 @@ exports.createGroup = async (req, res) => {
       trip = readTripFields(req.body);
     } catch (err) {
       return res.status(400).json({ msg: err.message });
+    }
+
+    /**
+     * The free tier runs ONE group. Counted on `createdBy`, not on membership.
+     *
+     * This distinction is the growth engine. If being a member counted, joining
+     * a friend's Goa trip would consume your one slot and you could no longer
+     * run your own flatshare — so the rational move would be to decline the
+     * invite, which is precisely the behaviour Finget needs people not to have.
+     * Joining is always free, for everyone, forever. What Plus sells is running
+     * several of your own.
+     *
+     * `UNLIMITED_GROUPS` is deliberately absent from `GROUP_GRANTABLE`: a Trip
+     * Pass upgrades a trip, and letting it also mint unlimited groups would make
+     * ₹199 a permanent substitute for a subscription.
+     */
+    const actor = await User.findById(req.user).select("entitlements").lean();
+    if (!can(actor, CAPABILITIES.UNLIMITED_GROUPS)) {
+      const mine = await Group.countDocuments({ createdBy: req.user });
+      if (mine >= FREE_LIMITS.groups) {
+        return res.status(403).json({
+          msg: `${explain(CAPABILITIES.UNLIMITED_GROUPS)} You're running ${mine} of ${FREE_LIMITS.groups} — you can still join any number of other people's groups.`,
+          capability: CAPABILITIES.UNLIMITED_GROUPS,
+          limit: FREE_LIMITS.groups,
+          current: mine,
+        });
+      }
     }
 
     const inviteCode = await Group.generateInviteCode();
