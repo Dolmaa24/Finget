@@ -19,6 +19,7 @@ import { useToast } from '../context/toastStore';
 import { inr } from '../lib/format';
 import { WhatsAppLink } from '../components/WhatsAppLink';
 import { AmbientSettings } from '../components/AmbientSettings';
+import { PlanSettings } from '../components/PlanSettings';
 import {
   Avatar,
   Badge,
@@ -259,6 +260,9 @@ export const SettingsPage: React.FC = () => {
             </div>
           </form>
         </Panel>
+
+        {/* Plan, upgrade, receipts */}
+        <PlanSettings />
 
         {/* PWA install, push notifications, badging */}
         <AmbientSettings />

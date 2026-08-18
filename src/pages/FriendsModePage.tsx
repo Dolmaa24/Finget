@@ -17,9 +17,11 @@ import { groupApi, type Group } from '../api';
 import { useScope } from '../context/scopeStore';
 import { useAuth } from '../context/authStore';
 import { useToast } from '../context/toastStore';
+import { usePaywall } from '../context/paywallStore';
 import { Avatar, Badge, Button, EmptyState, Field, Input, Modal, PageHeader, Panel, SkeletonPanel } from '../components/ui';
 import { TripSettings } from '../components/TripSettings';
 import { GroupSplitSettings } from '../components/GroupSplitSettings';
+import { TripPassCard } from '../components/TripPassCard';
 
 const EMOJI_CHOICES = ['👥', '🏖️', '🏠', '✈️', '🍽️', '🎉', '💼', '🚗', '🎓', '💍'];
 
@@ -27,6 +29,7 @@ export const FriendsModePage: React.FC = () => {
   const { groups, loadingGroups, reloadGroups, setScope, groupId, context } = useScope();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { showPaywallFor } = usePaywall();
   const navigate = useNavigate();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -53,7 +56,17 @@ export const FriendsModePage: React.FC = () => {
       setCreateOpen(false);
       navigate('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create the group.');
+      /**
+       * The free-tier group wall. Closing the dialog first is the point of the
+       * UX rule: the sheet explains what Plus would do, and it must not appear
+       * behind a form the person is still looking at.
+       */
+      if (showPaywallFor(err)) {
+        setCreateOpen(false);
+        setName('');
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not create the group.');
+      }
     } finally {
       setBusy(false);
     }
@@ -227,6 +240,13 @@ export const FriendsModePage: React.FC = () => {
                     </span>
                   ))}
                 </div>
+
+                {/* The Trip Pass sits ABOVE the settings, on trips only. It is
+                    an offer, not a setting, and burying it under three toggles
+                    is how it stops being seen. */}
+                {group.kind === 'trip' && (
+                  <TripPassCard group={group} onChange={reloadGroups} />
+                )}
 
                 {/* Split mode, income sharing and the Silent Collector */}
                 <GroupSplitSettings group={group} onChange={reloadGroups} />

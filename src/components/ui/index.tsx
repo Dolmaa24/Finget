@@ -461,3 +461,120 @@ export const Stat: React.FC<{
     </div>
   );
 };
+
+/* ------------------------------------------------------------------ */
+/* Paywall                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What Plus would have done, shown AFTER the thing you were doing.
+ *
+ * The milestone's UX rule is "never block a person mid-action. Let the action
+ * complete, then show what Plus would have done better." Two consequences that
+ * are easy to get wrong:
+ *
+ *   1. This is not an interstitial. It is raised by a caller that has already
+ *      finished (or been refused) — never rendered in front of a flow someone
+ *      is halfway through.
+ *   2. It names the SPECIFIC benefit from the server's `explain()`, never
+ *      "upgrade to unlock". The headline is the thing they just wanted.
+ *
+ * It also always shows what still works. A paywall that only lists what is
+ * gone reads as a product that has been taken away.
+ */
+export const PaywallSheet: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  /** The server's sentence about this exact capability. */
+  reason: string;
+  /** Rendered when the gate is a countable one ("1 of 1 groups"). */
+  usage?: { current: number; limit: number } | null;
+  /** Offered when the blocked thing is group-scoped and a Trip Pass covers it. */
+  tripPass?: { groupName: string; amountPaise: number; onBuy: () => void } | null;
+  plus?: { amountPaise: number; onBuy: () => void } | null;
+  busy?: boolean;
+  /** Says payments aren't configured, rather than showing a dead button. */
+  unavailableReason?: string | null;
+}> = ({ open, onClose, reason, usage, tripPass, plus, busy, unavailableReason }) => (
+  <Modal open={open} onClose={onClose} title="That one's on Plus" width="max-w-md">
+    <div className="space-y-5">
+      <p className="text-[14px] text-ink leading-relaxed">{reason}</p>
+
+      {usage && (
+        <div className="glass-well rounded-md px-4 py-3">
+          <p className="text-[12.5px] text-ink-2">
+            You're using{' '}
+            <strong className="text-ink numeric">
+              {usage.current} of {usage.limit}
+            </strong>{' '}
+            on the free plan.
+          </p>
+        </div>
+      )}
+
+      {unavailableReason ? (
+        <p className="text-[12.5px] text-ink-2 leading-relaxed">
+          Payments aren't set up on this server yet, so there's nothing to buy — everything
+          below is what Plus would add.
+          <span className="block text-ink-3 mt-1.5">For whoever runs it: {unavailableReason}.</span>
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {tripPass && (
+            <button
+              type="button"
+              onClick={tripPass.onBuy}
+              disabled={busy}
+              className="w-full text-left glass-well rounded-md p-4 hover:bg-white/60 transition-colors
+                         disabled:opacity-60 ring-1 ring-[var(--accent-wash)]"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[13.5px] font-semibold text-ink">
+                  Trip Pass for {tripPass.groupName}
+                </span>
+                <span className="text-[14px] font-semibold numeric text-accent">
+                  ₹{Math.round(tripPass.amountPaise / 100).toLocaleString('en-IN')}
+                </span>
+              </div>
+              <p className="text-[12px] text-ink-2 mt-1 leading-relaxed">
+                One payment, once — and it covers everyone in this trip, including anyone who
+                joins later.
+              </p>
+            </button>
+          )}
+
+          {plus && (
+            <button
+              type="button"
+              onClick={plus.onBuy}
+              disabled={busy}
+              className="w-full text-left glass-well rounded-md p-4 hover:bg-white/60 transition-colors disabled:opacity-60"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[13.5px] font-semibold text-ink">Finget Plus</span>
+                <span className="text-[14px] font-semibold numeric text-ink">
+                  ₹{Math.round(plus.amountPaise / 100).toLocaleString('en-IN')}/mo
+                </span>
+              </div>
+              <p className="text-[12px] text-ink-2 mt-1 leading-relaxed">
+                Unlimited groups and coach, import, the extension, widgets and weighted splits.
+              </p>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Never only what is gone. */}
+      <p className="text-[11.5px] text-ink-3 leading-relaxed">
+        Your daily number, manual entry, goals, the what-if simulator and the rule-based
+        insights stay free — always, on every plan.
+      </p>
+
+      <div className="flex justify-end">
+        <Button variant="ghost" onClick={onClose}>
+          Not now
+        </Button>
+      </div>
+    </div>
+  </Modal>
+);

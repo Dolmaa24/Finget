@@ -189,7 +189,51 @@ in-app bar names the age the moment the connection drops.
 - Native widgets are a documented follow-up, deliberately not built —
   see [docs/native-widgets.md](docs/native-widgets.md).
 
-### 11. Context-aware AI coach
+### 11. Money
+
+Free stays genuinely useful forever, and **the daily number is never paywalled** — there is
+a test that fails if anyone ever adds a capability check to `/affordability` or `/ambient`.
+Manual entry, goals, the what-if simulator, the rule-based insights and your first group are
+free on every plan.
+
+| Tier | Price | Unlocks |
+|---|---|---|
+| Free | ₹0 | Personal mode, 1 group you create, rule insights, manual entry, 5 coach messages/mo |
+| **Plus** | ₹99/mo · ₹899/yr | Unlimited groups and coach, screenshot + SMS import, extension, widgets, Wrapped exports, weighted splits |
+| **Trip Pass** | ₹199 once | Plus features for one trip — **for every member of it**, including whoever joins later |
+
+- **The Trip Pass is the one that matters**, and it lives inside Trip Mode where an organiser
+  is standing, not as a line on a pricing page. Students don't subscribe; organisers pay once
+  to make the money part painless, and that upgrades four to six people who meet the personal
+  paywall later on their own. Its window is `endDate + 30 days`, because Wrapped is generated
+  *after* the trip and a pass that expired on the last day would sell someone a card they
+  couldn't export.
+- **The client never names a price.** Order creation takes a product key and prices it from
+  the server's catalogue. A client that can send `amount: 1` is a client that buys a year
+  for ₹1.
+- **Nothing is granted outside the webhook.** There is deliberately no verify/confirm/success
+  endpoint — a test asserts all four 404. Razorpay's browser callback is user-controlled and
+  replayable; the webhook is HMAC-signed over the raw body with a secret only the server
+  holds. Grants are idempotent on the provider's payment id under a unique index, so the
+  retries Razorpay guarantees can't hand out eleven months for one payment. A capture whose
+  amount doesn't match the order is refused.
+- **No card data reaches Finget.** Razorpay Checkout collects the instrument on its own
+  origin; the server sees an order id. The Checkout script is loaded lazily, only when
+  someone actually opens a payment.
+- **The paywall never blocks you mid-action.** It appears *after* the thing you were doing,
+  names the specific benefit from the server's own `explain()` — never "upgrade to unlock" —
+  and always says what still works. On a group-scoped gate it leads with the Trip Pass,
+  because ₹199 once for the table beats ₹99/month each.
+- Refunds revoke what they bought. Renewing early extends from your existing expiry rather
+  than replacing it.
+
+**Not built, deliberately:** routing a matured savings goal to a partner deposit or fund.
+`services/goalCompletionService.js` is an interface with a no-op provider and a TODO naming
+the AMFI/SEBI registration and legal review it depends on. **No investment recommendation
+ships**, and the guard is a source scan — a test walks the backend for anything registering
+a provider, in the same spirit as `no-bare-hundreds`.
+
+### 12. Context-aware AI coach
 Streams over SSE with persistent per-scope conversation memory. Its figures come from
 the database, not from the client, so the numbers it quotes are always the real ones.
 
@@ -333,6 +377,11 @@ hostile host-page CSS, which is what the chip's shadow DOM exists to survive.
 | `POST` | `/api/groups/:id/mute-reminders` | Mute the Silent Collector for this group, for yourself |
 | `GET` | `/api/notifications` | In-app notifications + unread count |
 | `POST` | `/api/notifications/read` | Mark one, several, or all as read |
+| `GET` | `/api/payments/config` | Price list, your plan, whether this server can sell, and test-vs-live |
+| `POST` | `/api/payments/order` | Open an order for a product **key** — the server prices it |
+| `POST` | `/api/payments/webhook` | **Public** — signed by Razorpay. The only thing that grants an entitlement |
+| `GET` | `/api/payments/history` | Your own receipts |
+| `GET` | `/api/ai/coach/usage` | Free-tier coach meter, so it's visible before you hit it |
 | `GET` | `/api/whatsapp/webhook` | **Public** — Meta's registration challenge |
 | `POST` | `/api/whatsapp/webhook` | **Public** — inbound messages, gated by an HMAC signature over the raw body |
 | `GET` | `/api/whatsapp/status` | Whether your number is linked, and whether this server supports it |

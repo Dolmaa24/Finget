@@ -32,9 +32,26 @@ export function scopeBody(scope: ScopeRef): Record<string, unknown> {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /**
+   * Set on a 403 from a capability gate. Carrying it on the error is what lets
+   * ANY caller raise the paywall sheet without every call site knowing which
+   * feature it just touched — see `PaywallProvider`.
+   */
+  capability?: string;
+  /** Present on a countable limit (groups, coach messages). */
+  limit?: number;
+  current?: number;
+
+  constructor(
+    message: string,
+    status: number,
+    extra: { capability?: string; limit?: number; current?: number } = {}
+  ) {
     super(message);
     this.status = status;
+    this.capability = extra.capability;
+    this.limit = extra.limit;
+    this.current = extra.current;
   }
 }
 
@@ -59,8 +76,18 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
   }
 
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { msg?: string; error?: string };
-    throw new ApiError(data.msg || data.error || `Request failed (${res.status})`, res.status);
+    const data = (await res.json().catch(() => ({}))) as {
+      msg?: string;
+      error?: string;
+      capability?: string;
+      limit?: number;
+      current?: number;
+    };
+    throw new ApiError(data.msg || data.error || `Request failed (${res.status})`, res.status, {
+      capability: data.capability,
+      limit: data.limit,
+      current: data.current,
+    });
   }
 
   if (res.status === 204) return undefined as T;
@@ -599,6 +626,15 @@ export interface Group {
   incomeSharingCount: number;
   /** Your own consent, so a toggle can render its true state. */
   incomeSharingOptedIn: boolean;
+
+  /**
+   * A Trip Pass belongs to the GROUP, not to whoever paid — one purchase
+   * upgrades every member, including people who join afterwards.
+   */
+  entitlement?: {
+    tripPass: boolean;
+    until: string | null;
+  };
 }
 
 export interface SplitPreview {
@@ -882,6 +918,70 @@ export const pushApi = {
       method: 'PUT',
       body: JSON.stringify({ endpoint, topics }),
     }),
+};
+
+/* -------------------------- payments -------------------------- */
+
+export type ProductKey = 'plus_monthly' | 'plus_yearly' | 'trip_pass';
+
+export interface Product {
+  key: ProductKey;
+  kind: 'plus' | 'trip_pass';
+  label: string;
+  amountPaise: number;
+  requiresGroup: boolean;
+  blurb: string;
+}
+
+export interface PaymentConfig {
+  /** Whether this SERVER can sell. Distinct from whether the paywall is on. */
+  available: boolean;
+  unavailableReason: string | null;
+  publicKey: string | null;
+  /** True on an `rzp_test_` key. The UI says so out loud. */
+  testMode: boolean;
+  /** Gates are all open while this is false; the UI explains rather than blocks. */
+  paywallEnabled: boolean;
+  products: Product[];
+  plan: { plan: 'free' | 'plus'; until: string | null };
+  coach: { used: number; limit: number | null; unlimited: boolean };
+}
+
+export interface PaymentOrder {
+  orderId: string;
+  amountPaise: number;
+  currency: 'INR';
+  productKey: ProductKey;
+  label: string;
+  keyId: string;
+  testMode: boolean;
+}
+
+export interface Receipt {
+  _id: string;
+  productKey: ProductKey;
+  label: string;
+  amountPaise: number;
+  status: 'created' | 'paid' | 'failed' | 'refunded';
+  group: { name: string; emoji: string } | null;
+  grantedAt: string | null;
+  createdAt: string;
+}
+
+export const paymentApi = {
+  config: () => api<PaymentConfig>('/payments/config'),
+
+  /**
+   * Opens an order. The amount is NOT sent — the server prices the product key
+   * from its own catalogue, which is what stops a client buying a year for ₹1.
+   */
+  order: (productKey: ProductKey, groupId?: string) =>
+    api<PaymentOrder>('/payments/order', {
+      method: 'POST',
+      body: JSON.stringify({ productKey, ...(groupId ? { groupId } : {}) }),
+    }),
+
+  history: () => api<Receipt[]>('/payments/history'),
 };
 
 /* ------------------------- whatsapp --------------------------- */

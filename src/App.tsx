@@ -19,6 +19,7 @@ import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/authStore';
 import { ScopeProvider } from './context/ScopeContext';
 import { ToastProvider } from './context/ToastContext';
+import { PaywallProvider } from './context/PaywallContext';
 
 function AppRoutes() {
   const { token } = useAuth();
@@ -59,7 +60,11 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <ScopeProvider>
-            <AppRoutes />
+            {/* Inside Auth and Scope: the sheet needs the user, and a Trip Pass
+                needs to know which group was being used. */}
+            <PaywallProvider>
+              <AppRoutes />
+            </PaywallProvider>
           </ScopeProvider>
         </AuthProvider>
       </ToastProvider>

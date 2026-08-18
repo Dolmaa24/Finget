@@ -53,6 +53,17 @@ function serializeGroup(group, userId) {
     previewToken: group.previewToken || null,
     isAdmin: isGroupAdmin(group, userId),
 
+    /**
+     * The group's Trip Pass, so the UI can stop selling one that already
+     * exists. Only the two facts a member needs — whether it is active and
+     * until when. Never who paid or what it cost; that is on their receipt,
+     * not the group's business.
+     */
+    entitlement: {
+      tripPass: Boolean(group.entitlement?.tripPass),
+      until: group.entitlement?.until || null,
+    },
+
     splitMode: group.splitDefaults?.mode || "equal",
     remindersEnabled: group.reminders?.enabled !== false,
     /** How many members have consented — a count, never a list of amounts. */

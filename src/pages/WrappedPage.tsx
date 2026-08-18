@@ -3,6 +3,7 @@ import { Trophy, Share2, Copy, Check, Sparkles, ArrowRight } from 'lucide-react'
 import { groupApi, type ShareCard, type Wrapped } from '../api';
 import { useScope } from '../context/scopeStore';
 import { useToast } from '../context/toastStore';
+import { usePaywall } from '../context/paywallStore';
 import { inr } from '../lib/format';
 import { Button, EmptyState, PageHeader, Panel, SkeletonPanel, Stat } from '../components/ui';
 
@@ -17,6 +18,7 @@ import { Button, EmptyState, PageHeader, Panel, SkeletonPanel, Stat } from '../c
 export const WrappedPage: React.FC = () => {
   const { isFriends, group, groupId } = useScope();
   const { toast } = useToast();
+  const { showPaywallFor } = usePaywall();
 
   const [wrapped, setWrapped] = useState<Wrapped | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,15 @@ export const WrappedPage: React.FC = () => {
     try {
       setCard(await groupApi.shareWrapped(groupId));
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not create the link.', 'error');
+      /**
+       * A group-scoped gate, so the sheet leads with the Trip Pass: ₹199 once
+       * for the whole trip beats ₹99/month each, and the recap they are looking
+       * at is exactly the moment that argument lands. The recap itself stays
+       * on screen — only the card was refused.
+       */
+      if (!showPaywallFor(err, { groupId: groupId || undefined, groupName: group?.name })) {
+        toast(err instanceof Error ? err.message : 'Could not create the link.', 'error');
+      }
     } finally {
       setSharing(false);
     }
