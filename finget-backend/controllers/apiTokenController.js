@@ -6,6 +6,8 @@ const User = require("../models/User");
 const MINTABLE = {
   translate: CAPABILITIES.BROWSER_EXTENSION,
   deflect: CAPABILITIES.BROWSER_EXTENSION,
+  roast: CAPABILITIES.BROWSER_EXTENSION,
+  goals: CAPABILITIES.BROWSER_EXTENSION,
   /**
    * Widgets are their own Plus capability, not the extension's — someone may
    * well want the number on their home screen without ever installing a
@@ -16,7 +18,7 @@ const MINTABLE = {
 };
 
 /** What the browser extension asks for when nothing is specified. */
-const DEFAULT_SCOPES = ["translate", "deflect"];
+const DEFAULT_SCOPES = ["translate", "deflect", "roast", "goals"];
 
 /**
  * `POST /api/tokens` — mint a scoped token.

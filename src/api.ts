@@ -118,6 +118,11 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  google: (body: { token: string }) =>
+    api<{ token: string; user: Profile }>('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   me: () => api<Profile>('/auth/me'),
   updateMe: (body: {
     name?: string;
@@ -276,12 +281,14 @@ export const financeApi = {
 /* ------------------------ api tokens -------------------------- */
 
 /** What a scoped credential is allowed to reach. One entry, one route. */
-export type TokenScope = 'translate' | 'deflect';
+export type TokenScope = 'translate' | 'deflect' | 'roast' | 'goals';
 
 /** Plain-language labels for the connect page and Settings. */
 export const SCOPE_LABELS: Record<TokenScope, string> = {
   translate: 'Ask what a price means for your goals',
   deflect: 'Put something in your 48-hour vault',
+  roast: 'Get a savage roast for a purchase',
+  goals: 'Add an item to your wishlist',
 };
 
 /** A scoped credential held by something that is not the web app. */
@@ -371,6 +378,12 @@ export const importApi = {
     api<{ rows: ImportRow[]; source: 'screenshot'; imageDiscarded: boolean }>('/receipts/parse', {
       method: 'POST',
       body: JSON.stringify({ image: dataUrl, ...scopeBody(scope) }),
+    }),
+
+  parsePdf: (scope: ScopeRef, dataUrl: string) =>
+    api<{ rows: ImportRow[]; source: 'pdf'; truncated: boolean }>('/receipts/parse-pdf', {
+      method: 'POST',
+      body: JSON.stringify({ pdf: dataUrl, ...scopeBody(scope) }),
     }),
 
   commit: (scope: ScopeRef, rows: Partial<ImportRow>[]) =>
@@ -616,6 +629,9 @@ export interface Group {
   timezone: string;
   wrappedGeneratedAt: string | null;
   isAdmin: boolean;
+  isActive: boolean;
+  inactiveSinceDays?: number;
+  lastActiveDate?: string;
   members: Member[];
 
   /** What the Add sheet reaches for first. A default, never a lock. */
@@ -805,6 +821,7 @@ export const groupApi = {
       emoji?: string;
       splitMode?: SplitMode;
       remindersEnabled?: boolean;
+      isActive?: boolean;
     } & TripFields
   ) => api<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
@@ -1087,6 +1104,200 @@ export const aiApi = {
 
   clearHistory: (scope: ScopeRef) =>
     api(`/ai/coach/history${buildQuery(scope.context, scope.groupId)}`, { method: 'DELETE' }),
+
+  roast: (
+    scope: ScopeRef,
+    body: { itemOrCategory?: string; amount: number; persona?: 'savage' | 'desi_mom' | 'toxic_cfo' | 'monk' }
+  ) =>
+    api<SavageRoastResponse>('/ai/roast', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, ...scopeBody(scope) }),
+    }),
+};
+
+/* ------------------------- savage roast ----------------------- */
+
+export interface SavageRoastResponse {
+  roast: string;
+  realityCheck: string;
+  absurdityScore: number;
+  equivalents: string[];
+  punchline: string;
+  persona: string;
+  aiEnabled: boolean;
+}
+
+/* ----------------------- ai credit tracker -------------------- */
+
+export interface AiProvider {
+  _id: string;
+  name: string;
+  providerKey: 'openai' | 'anthropic' | 'openrouter' | 'groq' | 'deepseek' | 'gemini' | 'mistral' | 'custom';
+  authCredentialsEncrypted?: string;
+  status: 'active' | 'inactive' | 'low_balance' | 'rate_limited' | 'expired';
+  syncType: 'api' | 'manual' | 'local_proxy';
+  settings: {
+    lowBalanceThreshold: number;
+    currency: string;
+    autoSyncLedger: boolean;
+    alertOnExpiryDays?: number;
+  };
+  velocity?: {
+    totalBalance: number;
+    cost30d: number;
+    cost7d: number;
+    dailyBurn: number;
+    runwayDays: number;
+    totalTokens30d: number;
+    requestCount30d: number;
+  };
+  credits?: AiCredit[];
+  grantBalance?: number;
+  paidBalance?: number;
+  lastSyncedAt?: string;
+  createdAt: string;
+}
+
+export interface AiCredit {
+  _id: string;
+  providerId: string | { _id: string; name: string };
+  name: string;
+  initialAmount: number;
+  remainingBalance: number;
+  currency: string;
+  expiryDate?: string;
+  creditType: 'grant' | 'paid' | 'subscription';
+  isExpired?: boolean;
+  purchaseDate: string;
+  autoSyncLedger?: boolean;
+  createdAt: string;
+}
+
+export interface AiUsageLog {
+  _id: string;
+  providerId: { _id: string; name: string; providerKey: string };
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+  currency: string;
+  source: 'local_proxy' | 'api_sync' | 'manual_entry' | 'playground' | 'webhook';
+  deductedCreditId?: { _id: string; name: string; creditType: string };
+  notes?: string;
+  timestamp: string;
+}
+
+export interface AiCreditDashboard {
+  summary: {
+    totalBalanceUSD: number;
+    totalBalanceINR: number;
+    totalSpend30dUSD: number;
+    totalSpend30dINR: number;
+    totalDailyBurnUSD: number;
+    runwayDays: number;
+    providerCount: number;
+  };
+  providers: AiProvider[];
+  modelBreakdown: {
+    model: string;
+    cost: number;
+    tokens: number;
+    count: number;
+    percentage: number;
+  }[];
+  recentUsage: AiUsageLog[];
+  alerts: {
+    type: string;
+    title: string;
+    body: string;
+    providerName?: string;
+    providerId?: string;
+    creditId?: string;
+  }[];
+}
+
+export interface ModelPricing {
+  key: string;
+  provider: string;
+  name: string;
+  inputPerM: number;
+  outputPerM: number;
+}
+
+export const aiCreditApi = {
+  getDashboard: () => api<AiCreditDashboard>('/ai-credits/dashboard'),
+  getProviders: () => api<{ providers: AiProvider[] }>('/ai-credits/providers'),
+  createProvider: (body: {
+    name: string;
+    providerKey: string;
+    authCredentials?: string;
+    lowBalanceThreshold?: number;
+    syncType?: string;
+  }) => api<{ provider: AiProvider }>('/ai-credits/providers', { method: 'POST', body: JSON.stringify(body) }),
+  updateProvider: (
+    id: string,
+    body: {
+      name?: string;
+      status?: string;
+      lowBalanceThreshold?: number;
+      syncType?: string;
+      authCredentials?: string;
+    }
+  ) => api<{ provider: AiProvider }>(`/ai-credits/providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteProvider: (id: string) => api<{ msg: string }>(`/ai-credits/providers/${id}`, { method: 'DELETE' }),
+
+  createCredit: (body: {
+    providerId: string;
+    name: string;
+    amount: number;
+    creditType: 'grant' | 'paid' | 'subscription';
+    expiryDate?: string;
+    autoSyncLedger?: boolean;
+  }) => api<{ credit: AiCredit }>('/ai-credits/credits', { method: 'POST', body: JSON.stringify(body) }),
+  deleteCredit: (id: string) => api<{ msg: string }>(`/ai-credits/credits/${id}`, { method: 'DELETE' }),
+
+  getUsage: (params?: { providerId?: string; model?: string; page?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.providerId) q.append('providerId', params.providerId);
+    if (params?.model) q.append('model', params.model);
+    if (params?.page) q.append('page', String(params.page));
+    if (params?.limit) q.append('limit', String(params.limit));
+    const queryStr = q.toString() ? `?${q.toString()}` : '';
+    return api<{ logs: AiUsageLog[]; total: number; page: number; limit: number }>(`/ai-credits/usage${queryStr}`);
+  },
+
+  logUsage: (body: {
+    providerId: string;
+    model: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    cost?: number;
+    source?: string;
+    notes?: string;
+  }) =>
+    api<{ usageLog: AiUsageLog; fifoResult: { totalDeducted: number; allocations: unknown[] } }>(
+      '/ai-credits/usage/log',
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+
+  syncProvider: (providerId: string) =>
+    api<{ success: boolean; providerId: string; lastSyncedAt: string }>(`/ai-credits/sync/${providerId}`, {
+      method: 'POST',
+    }),
+
+  estimateCost: (body: { model: string; inputTokens?: number; outputTokens?: number; promptText?: string }) =>
+    api<{
+      model: string;
+      inputTokens: number;
+      outputTokens: number;
+      inputCost: number;
+      outputCost: number;
+      totalCost: number;
+      costINR: number;
+    }>('/ai-credits/estimate-cost', { method: 'POST', body: JSON.stringify(body) }),
+
+  getModels: () => api<{ models: ModelPricing[] }>('/ai-credits/models'),
 };
 
 /**

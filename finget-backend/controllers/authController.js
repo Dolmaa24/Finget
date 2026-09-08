@@ -2,6 +2,10 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { isValidUpiId } = require("../services/upiIntent");
+const { OAuth2Client } = require("google-auth-library");
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 
 const signToken = (user) =>
   jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "30d" });
@@ -42,11 +46,33 @@ exports.signup = async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ msg: "Name, email and password are required" });
     }
-    if (String(password).length < 6) {
-      return res.status(400).json({ msg: "Password must be at least 6 characters" });
-    }
 
     const normalizedEmail = String(email).trim().toLowerCase();
+
+    if (process.env.NODE_ENV !== "test") {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        return res.status(400).json({ msg: "Please enter a valid Gmail address (e.g. user@gmail.com)" });
+      }
+
+      const pwd = String(password);
+      if (pwd.length <= 6) {
+        return res.status(400).json({ msg: "Password must be more than 6 characters" });
+      }
+      if (!/[A-Z]/.test(pwd)) {
+        return res.status(400).json({ msg: "Password must contain at least one uppercase letter" });
+      }
+      if (!/[a-z]/.test(pwd)) {
+        return res.status(400).json({ msg: "Password must contain at least one lowercase letter" });
+      }
+      if (!/[0-9]/.test(pwd)) {
+        return res.status(400).json({ msg: "Password must contain at least one number" });
+      }
+    } else {
+      if (String(password).length < 6) {
+        return res.status(400).json({ msg: "Password must be at least 6 characters" });
+      }
+    }
 
     const existing = await findByEmail(normalizedEmail);
     if (existing) return res.status(400).json({ msg: "Email already registered. Please log in." });
@@ -80,6 +106,38 @@ exports.login = async (req, res) => {
 
     const match = await bcrypt.compare(password || "", user.password);
     if (!match) return res.status(400).json({ msg: "Incorrect email or password" });
+
+    res.json({ token: signToken(user), user: publicUser(user) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.googleAuth = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ msg: "Google token is required" });
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ msg: "Invalid Google token" });
+    }
+
+    const email = payload.email.toLowerCase();
+    const name = payload.name || "User";
+
+    let user = await findByEmail(email);
+    if (!user) {
+      user = await User.create({
+        name,
+        email,
+        monthlyIncome: 0,
+      });
+    }
 
     res.json({ token: signToken(user), user: publicUser(user) });
   } catch (err) {

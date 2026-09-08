@@ -18,6 +18,7 @@ export const GoalsPage: React.FC = () => {
   const { isFriends, group } = useScope();
   const { toast } = useToast();
   const { goals, loading, create, update, contribute, remove } = useGoals();
+  const [activeTab, setActiveTab] = useState<'goals' | 'wishlist'>('goals');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: '', targetAmount: '', deadline: '' });
@@ -94,30 +95,51 @@ export const GoalsPage: React.FC = () => {
         }
       />
 
+      <div className="flex border-b border-black/5 mb-6 gap-2">
+        <button
+          type="button"
+          className={cn("px-4 py-3 text-[14px] font-semibold border-b-2 transition-colors", activeTab === 'goals' ? "border-[var(--brand)] text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}
+          onClick={() => setActiveTab('goals')}
+        >
+          Savings Goals
+        </button>
+        <button
+          type="button"
+          className={cn("px-4 py-3 text-[14px] font-semibold border-b-2 transition-colors", activeTab === 'wishlist' ? "border-[var(--brand)] text-ink" : "border-transparent text-ink-3 hover:text-ink-2")}
+          onClick={() => setActiveTab('wishlist')}
+        >
+          Wishlist
+        </button>
+      </div>
+
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {[0, 1, 2].map((i) => (
             <SkeletonPanel key={i} height={230} />
           ))}
         </div>
-      ) : goals.length === 0 ? (
+      ) : goals.filter(g => activeTab === 'wishlist' ? g.name.startsWith('🎁 Wishlist:') : !g.name.startsWith('🎁 Wishlist:')).length === 0 ? (
         <EmptyState
           icon={<Target className="w-6 h-6" />}
-          title="No goals yet"
+          title={activeTab === 'wishlist' ? "Your wishlist is empty" : "No goals yet"}
           body={
-            isFriends
+            activeTab === 'wishlist' 
+              ? 'Save items from the web using the Finget browser extension.'
+              : isFriends
               ? 'Set a shared target — a trip, a deposit, a rainy-day fund.'
               : 'A goal turns leftover money into progress instead of drift.'
           }
           action={
-            <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />}>
-              Create your first goal
-            </Button>
+            activeTab === 'goals' ? (
+              <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />}>
+                Create your first goal
+              </Button>
+            ) : undefined
           }
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 stagger">
-          {goals.map((goal) => {
+          {goals.filter(g => activeTab === 'wishlist' ? g.name.startsWith('🎁 Wishlist:') : !g.name.startsWith('🎁 Wishlist:')).map((goal) => {
             const percent = pct(goal.currentAmount || 0, goal.targetAmount);
             const complete = percent >= 100;
             const remaining = Math.max(0, goal.targetAmount - (goal.currentAmount || 0));

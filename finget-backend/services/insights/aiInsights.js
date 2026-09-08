@@ -65,7 +65,14 @@ Respond with JSON in exactly this shape:
       response_format: { type: "json_object" },
     });
 
-    const parsed = JSON.parse(response.choices[0].message.content);
+    let rawContent = response.choices[0].message.content.trim();
+    if (rawContent.startsWith("```json")) {
+      rawContent = rawContent.replace(/^```json/, "").replace(/```$/, "").trim();
+    } else if (rawContent.startsWith("```")) {
+      rawContent = rawContent.replace(/^```/, "").replace(/```$/, "").trim();
+    }
+
+    const parsed = JSON.parse(rawContent);
     return Array.isArray(parsed.insights) ? parsed.insights : [];
   } catch (err) {
     console.error("AI Insight generation failed:", err.message);

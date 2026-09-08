@@ -12,14 +12,34 @@ const amazon: SiteAdapter = {
   hosts: ["amazon.in"],
   isPriceablePage: (url) => /\/(dp|gp\/product)\//.test(url.pathname),
   priceSelectors: [
+    "#corePriceDisplay_desktop_feature_div .priceToPay .a-price-whole",
+    "#corePriceDisplay_desktop_feature_div .a-price-whole",
+    "#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen",
+    "#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price) .a-offscreen",
     "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+    "#corePrice_feature_div .priceToPay .a-price-whole",
+    "#corePrice_feature_div .a-price-whole",
+    "#corePrice_feature_div .priceToPay .a-offscreen",
     "#corePrice_feature_div .a-price .a-offscreen",
+    "#apex_desktop .priceToPay .a-price-whole",
+    "#apex_desktop .a-price-whole",
+    "#apex_desktop .priceToPay .a-offscreen",
     "#apex_desktop .a-price .a-offscreen",
     // Mobile web puts the price here instead.
+    "#corePrice_mobile_feature_div .a-price-whole",
     "#corePrice_mobile_feature_div .a-price .a-offscreen",
     "#priceblock_ourprice",
     "#priceblock_dealprice",
+    ".priceToPay .a-price-whole",
+    ".a-price:not(.a-text-price) .a-offscreen",
     ".a-price .a-offscreen",
+  ],
+  scanContainers: [
+    "#corePriceDisplay_desktop_feature_div",
+    "#corePrice_feature_div",
+    "#apex_desktop",
+    "#price",
+    "#centerCol",
   ],
   anchorSelectors: [
     "#corePriceDisplay_desktop_feature_div",
@@ -89,10 +109,34 @@ const swiggy: SiteAdapter = {
 
 export const ADAPTERS: SiteAdapter[] = [amazon, flipkart, myntra, nykaa, zomato, swiggy];
 
+/**
+ * Universal Fallback Adapter
+ * If a site is not explicitly listed, we try common e-commerce CSS classes.
+ */
+const universal: SiteAdapter = {
+  id: "universal",
+  label: "Online Store",
+  hosts: [], // Matches everything not explicitly matched
+  isPriceablePage: (url) => /\/(product|item|p|buy|checkout|cart)\b/.test(url.pathname) || document.querySelector('[class*="price"]') !== null,
+  priceSelectors: [
+    '[class*="price"]',
+    '[class*="amount"]',
+    '[class*="total"]',
+    'span:contains("₹")',
+    'div:contains("₹")'
+  ],
+  scanContainers: [
+    "main",
+    '[class*="product"]',
+    '[class*="cart"]',
+    '[class*="checkout"]',
+    "body"
+  ],
+};
+
 /** Suffix match so `www.amazon.in` and `amazon.in` both resolve. */
 export function adapterForHost(hostname: string): SiteAdapter | null {
   const host = hostname.toLowerCase().replace(/^www\./, "");
-  return (
-    ADAPTERS.find((a) => a.hosts.some((h) => host === h || host.endsWith(`.${h}`))) ?? null
-  );
+  const explicit = ADAPTERS.find((a) => a.hosts.some((h) => host === h || host.endsWith(`.${h}`)));
+  return explicit ?? universal;
 }

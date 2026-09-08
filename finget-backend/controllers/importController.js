@@ -2,6 +2,8 @@ const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const { parseBlock } = require("../services/smsParser");
 const { extractFromScreenshot } = require("../services/screenshotExtractor");
+const { extractFromPdfText } = require("../services/pdfExtractor");
+const pdfParse = require("pdf-parse");
 const { annotateDuplicates } = require("../services/dedupeService");
 const { suggestCategory, learnFromCommit } = require("../services/categoryLearner");
 const {
@@ -236,6 +238,59 @@ exports.parseSms = async (req, res) => {
        */
       unrecognised: unparsed.slice(0, 20),
       truncated: drafts.length > MAX_DRAFTS_PER_IMPORT,
+    });
+  } catch (err) {
+    handleScopeError(err, res);
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* PDF Statement                                                       */
+/* ------------------------------------------------------------------ */
+
+exports.parsePdf = async (req, res) => {
+  try {
+    const raw = String(req.body.pdf || "");
+    if (!raw) return res.status(400).json({ msg: "A PDF file is required" });
+
+    const match = raw.match(/^data:application\/pdf;base64,(.*)$/s);
+    const base64 = match ? match[1] : raw;
+
+    const approxBytes = Math.floor((base64.length * 3) / 4);
+    // Limit to 5MB to avoid overwhelming the model with giant files
+    if (approxBytes > 5 * 1024 * 1024) {
+      return res.status(413).json({ msg: "That PDF is too large. Keep it under 5MB." });
+    }
+
+    const buffer = Buffer.from(base64, "base64");
+    if (buffer.length === 0) return res.status(400).json({ msg: "That PDF could not be decoded" });
+
+    const user = await User.findById(req.user);
+    if (!user) return res.status(404).json({ msg: "User not found" });
+
+    const pdfData = await pdfParse(buffer);
+    const text = pdfData.text || "";
+
+    if (!text.trim()) {
+      return res.status(400).json({ msg: "Could not extract text from that PDF. It might be scanned or image-based." });
+    }
+
+    const scope = await resolveScope({
+      userId: req.user,
+      context: req.body.context,
+      groupId: req.body.groupId,
+    });
+
+    const result = await extractFromPdfText(text);
+    if (!result.ok) return res.status(422).json({ msg: result.reason });
+
+    const existing = await existingForScope(scope, req.user);
+    const rows = decorate(result.drafts.slice(0, MAX_DRAFTS_PER_IMPORT), existing, user);
+
+    res.json({
+      rows,
+      source: "pdf",
+      truncated: result.drafts.length > MAX_DRAFTS_PER_IMPORT,
     });
   } catch (err) {
     handleScopeError(err, res);

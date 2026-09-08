@@ -63,8 +63,24 @@ function computeTranslation({ affordability, goals = [], amountPaise }) {
     remainingAfterPaise > 0 ? Math.round(remainingAfterPaise / daysLeft) : 0;
 
   let riskAfter = "Safe";
-  if (remainingAfterPaise < bufferPaise) riskAfter = "Warning";
-  if (remainingAfterPaise < 0) riskAfter = "Risky";
+  
+  const incomePaise = toPaise(affordability.income || 0);
+  if (incomePaise > 0) {
+    const percent = amountPaise / incomePaise;
+    if (percent >= 0.50) {
+      riskAfter = "Extremely Risky";
+    } else if (percent >= 0.30) {
+      riskAfter = "Risky";
+    } else if (percent >= 0.20) {
+      riskAfter = "Warning";
+    } else if (percent < 0.10) {
+      riskAfter = "Safe";
+    }
+  } else {
+    // Fallback if no income data
+    if (remainingAfterPaise < bufferPaise) riskAfter = "Warning";
+    if (remainingAfterPaise < 0) riskAfter = "Risky";
+  }
 
   // How many days of ordinary allowance this purchase consumes.
   const daysOfSafeSpend =

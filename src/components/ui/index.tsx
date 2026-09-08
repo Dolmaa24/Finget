@@ -330,7 +330,7 @@ export const Modal: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade"
+      className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-10 md:pt-20 overflow-y-auto animate-fade"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -342,12 +342,12 @@ export const Modal: React.FC<{
       <div
         ref={panelRef}
         className={cx(
-          'relative w-full glass-modal glass-sheen rounded-xl overflow-hidden animate-pop',
+          'relative w-full glass-modal glass-sheen rounded-xl overflow-hidden animate-pop flex flex-col max-h-[90vh]',
           width
         )}
       >
         {(title || subtitle) && (
-          <div className="px-7 pt-7 pb-5 border-b border-white/50">
+          <div className="px-7 pt-7 pb-5 border-b border-white/50 shrink-0">
             {title && <h2 className="text-xl font-semibold text-ink tracking-tight">{title}</h2>}
             {subtitle && <p className="text-sm text-ink-3 mt-1">{subtitle}</p>}
           </div>
@@ -356,11 +356,11 @@ export const Modal: React.FC<{
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute top-5 right-5 p-2 rounded-pill text-ink-3 hover:text-ink hover:bg-white/60 transition-colors"
+          className="absolute top-5 right-5 p-2 rounded-pill text-ink-3 hover:text-ink hover:bg-white/60 transition-colors z-10"
         >
           <X className="w-4.5 h-4.5" strokeWidth={2} />
         </button>
-        <div className="px-7 py-6 max-h-[70vh] overflow-y-auto scroll-slim">{children}</div>
+        <div className="px-7 py-6 overflow-y-auto scroll-slim flex-1">{children}</div>
       </div>
     </div>
   );

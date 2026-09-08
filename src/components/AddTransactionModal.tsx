@@ -1,7 +1,7 @@
 import { cn } from '../lib/cn';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Users, Split as SplitIcon } from 'lucide-react';
-import { groupApi, txApi, type NewTransaction, type SplitPreview } from '../api';
+import { txApi, type NewTransaction } from '../api';
 import { useScope } from '../context/scopeStore';
 import { useAuth } from '../context/authStore';
 import { useToast } from '../context/toastStore';
@@ -13,21 +13,14 @@ const FALLBACK_CATEGORIES = [
   'Entertainment', 'Health', 'Travel', 'Subscriptions', 'Education', 'Other',
 ];
 
-type SplitChoice = 'none' | 'equal' | 'weighted' | 'custom';
-
-/** How the reader's own share compares to a plain equal split. */
-const RELATIVE_COPY: Record<'larger' | 'smaller' | 'even', string> = {
-  larger: "You're paying a larger share.",
-  smaller: "You're paying a smaller share.",
-  even: "Everyone's share is the same.",
-};
+type SplitChoice = 'none' | 'equal' | 'custom';
 
 export const AddTransactionModal: React.FC<{
   open: boolean;
   onClose: () => void;
   onSaved?: () => void;
 }> = ({ open, onClose, onSaved }) => {
-  const { scope, isFriends, group, groupId, bumpRevision } = useScope();
+  const { scope, isFriends, group, bumpRevision } = useScope();
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -41,7 +34,6 @@ export const AddTransactionModal: React.FC<{
   const [participants, setParticipants] = useState<string[]>([]);
   const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<string[]>(FALLBACK_CATEGORIES);
-  const [weighted, setWeighted] = useState<SplitPreview | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -63,12 +55,11 @@ export const AddTransactionModal: React.FC<{
     setError('');
     // Honour whatever the group agreed on, rather than making someone re-pick
     // "weighted" forty times over a trip.
-    setSplitChoice(isFriends ? group?.splitMode ?? 'equal' : 'none');
+    setSplitChoice(isFriends ? 'equal' : 'none');
     setPaidBy(user?._id || '');
     setParticipants(members.map((m) => m._id));
     setCustomSplits({});
-    setWeighted(null);
-  }, [open, isFriends, user?._id, members, group?.splitMode]);
+  }, [open, isFriends, user?._id, members]);
 
   const numericAmount = Number(amount) || 0;
   const splittable = isFriends && type === 'expense';
@@ -104,14 +95,12 @@ export const AddTransactionModal: React.FC<{
     if (splittable) {
       body.paidBy = paidBy || user?._id;
 
-      if (splitChoice === 'equal' || splitChoice === 'weighted') {
+      if (splitChoice === 'equal') {
         if (participants.length === 0) {
           setError('Pick at least one person to split with.');
           return;
         }
-        // The server recomputes the weights from live incomes and consent —
-        // the preview is a preview, never the numbers that get stored.
-        body.splitMode = splitChoice;
+        body.splitMode = 'equal';
         body.splitWith = participants;
       } else if (splitChoice === 'custom') {
         if (Math.abs(customTotal - numericAmount) > 0.5) {
@@ -152,36 +141,7 @@ export const AddTransactionModal: React.FC<{
     return numericAmount / participants.length;
   }, [splitChoice, participants.length, numericAmount]);
 
-  /**
-   * Weighted shares come from the server, never from the client.
-   *
-   * Computing them here would need every member's income, and the whole point
-   * of Milestone 5 is that the browser is never given it. So the amount goes
-   * up and the shares come back down — the arithmetic happens where the
-   * incomes already are.
-   */
-  useEffect(() => {
-    if (splitChoice !== 'weighted' || !groupId || !numericAmount || participants.length === 0) {
-      setWeighted(null);
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      groupApi
-        .splitPreview(groupId, numericAmount, 'weighted', participants)
-        .then((preview) => {
-          if (!cancelled) setWeighted(preview);
-        })
-        .catch(() => {
-          if (!cancelled) setWeighted(null);
-        });
-    }, 300);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [splitChoice, groupId, numericAmount, participants]);
 
   return (
     <Modal
@@ -266,13 +226,10 @@ export const AddTransactionModal: React.FC<{
               className="w-full [&>button]:flex-1"
               options={[
                 { value: 'equal', label: 'Equally' },
-                { value: 'weighted', label: 'By income' },
                 { value: 'custom', label: 'Custom' },
                 { value: 'none', label: "Don't split" },
               ]}
-            />
-
-            {(splitChoice === 'equal' || splitChoice === 'weighted') && (
+            />            {splitChoice === 'equal' && (
               <div className="space-y-2">
                 <p className="text-[12px] text-ink-3">Tap to include or exclude people.</p>
                 <div className="flex flex-wrap gap-2">
@@ -286,7 +243,7 @@ export const AddTransactionModal: React.FC<{
                         className={cn(
                           'inline-flex items-center gap-2 rounded-pill pl-1 pr-3 py-1 border transition-all duration-200',
                           on
-                            ? 'bg-white/80 border-white text-ink shadow-soft'
+                            ? 'bg-white/85 border-white text-ink shadow-soft'
                             : 'bg-white/25 border-white/50 text-ink-4'
                         )}
                       >
@@ -304,47 +261,6 @@ export const AddTransactionModal: React.FC<{
                     each across {participants.length}{' '}
                     {participants.length === 1 ? 'person' : 'people'}.
                   </p>
-                )}
-
-                {splitChoice === 'weighted' && (
-                  <div className="pt-1 space-y-2">
-                    {weighted?.degradedToEqual && (
-                      <p className="text-[12.5px] text-ink-2 bg-white/45 rounded-sm px-3 py-2 leading-relaxed">
-                        Nobody in this group has turned on income sharing yet, so this is an equal
-                        split. Turn it on for yourself under Groups.
-                      </p>
-                    )}
-
-                    {weighted && !weighted.degradedToEqual && (
-                      <>
-                        <div className="space-y-1.5">
-                          {weighted.shares.map((share) => (
-                            <div key={share.userId} className="flex items-center gap-2.5">
-                              <Avatar name={share.name} size={24} />
-                              <span className="text-[13px] text-ink-2 flex-1 truncate">
-                                {share.userId === user?._id ? 'You' : share.name}
-                              </span>
-                              <span className="text-[13px] font-semibold numeric text-ink">
-                                {inr(share.amount, { precise: true })}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        {weighted.relativeLabel && (
-                          // The only comparison shown anywhere: about the
-                          // reader's own share. Never "Priya earns more".
-                          <p className="text-[12.5px] text-ink-2">
-                            {RELATIVE_COPY[weighted.relativeLabel]}{' '}
-                            <span className="text-ink-3">
-                              Based on the {weighted.consentingCount}{' '}
-                              {weighted.consentingCount === 1 ? 'person who has' : 'people who have'}{' '}
-                              turned income sharing on.
-                            </span>
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
                 )}
               </div>
             )}

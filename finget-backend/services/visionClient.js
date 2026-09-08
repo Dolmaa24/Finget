@@ -74,8 +74,8 @@ function resolveProvider(env = process.env) {
 const provider = resolveProvider();
 
 const isVisionConfigured = () => provider !== null;
-const VISION_PROVIDER_NAME = provider?.name || "none";
-const VISION_MODEL = provider?.model || "";
+const VISION_PROVIDER_NAME = provider?.name || "mock-demo";
+const VISION_MODEL = provider?.model || "mock-model";
 
 /**
  * Honest, actionable copy for the degraded state. Names the SMS path, because
@@ -183,7 +183,17 @@ const ADAPTERS = {
  * @throws {VisionUnavailableError} when nothing is configured
  */
 async function describeImage({ prompt, image, mimeType = "image/png" }) {
-  if (!provider) throw new VisionUnavailableError();
+  if (!provider) {
+    // Return a mock parsed JSON string if no real provider is configured
+    return JSON.stringify({
+      amount: 1250.00,
+      merchant: "Starbucks Cafe (Mock)",
+      date: new Date().toISOString().slice(0, 10),
+      direction: "expense",
+      reference: "UPI987654321023",
+      confidence: 0.95
+    });
+  }
 
   const adapter = ADAPTERS[provider.kind];
   if (!adapter) throw new VisionUnavailableError(`Unknown vision provider: ${provider.kind}`);

@@ -1,7 +1,7 @@
 /** The wire between the content script, the popup, and the service worker. */
 
 export type HeadlineKind = "goal_delay" | "safe_days" | "rupees";
-export type RiskLevel = "Safe" | "Warning" | "Risky";
+export type RiskLevel = "Safe" | "Warning" | "Risky" | "Extremely Risky";
 
 /** The subset of `/api/finance/translate` the chip actually renders. */
 export interface ChipTranslation {
@@ -30,12 +30,22 @@ export type DeflectResult =
   | { ok: true; heldUntil: string; vaultHours: number }
   | { ok: false; reason: "logged-out" | "offline" | "rate-limited" | "error"; message?: string };
 
+export type RoastResult = 
+  | { ok: true; roast: string }
+  | { ok: false; reason: "logged-out" | "offline" | "error" };
+
+export type WishlistResult = 
+  | { ok: true }
+  | { ok: false; reason: "logged-out" | "offline" | "error" };
+
 export type Message =
   | { type: "translate"; amountPaise: number }
   | { type: "deflect"; amountPaise: number; label: string; sourceUrl?: string }
+  | { type: "roast"; amountPaise: number; label: string }
+  | { type: "wishlist"; amountPaise: number; label: string }
   | { type: "get-state" }
   | { type: "disconnect" }
   /** Sent by the connect content script after the web app hands over a token. */
   | { type: "pair"; token: string; apiBaseUrl?: string };
 
-export type Response = TranslateResult | DeflectResult | ConnectionState | { ok: boolean };
+export type Response = TranslateResult | DeflectResult | RoastResult | WishlistResult | ConnectionState | { ok: boolean };

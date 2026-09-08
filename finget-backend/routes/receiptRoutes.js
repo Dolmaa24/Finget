@@ -4,6 +4,7 @@ const { importLimiter, aiLimiter } = require("../middleware/rateLimit");
 const {
   parseScreenshot,
   parseSms,
+  parsePdf,
   commitImport,
   getImportStatus,
 } = require("../controllers/importController");
@@ -21,6 +22,7 @@ const {
 router.get("/status", auth, getImportStatus);
 router.post("/parse", auth, aiLimiter, parseScreenshot);
 router.post("/parse-sms", auth, importLimiter, parseSms);
+router.post("/parse-pdf", auth, aiLimiter, parsePdf);
 router.post("/commit", auth, importLimiter, commitImport);
 
 module.exports = router;

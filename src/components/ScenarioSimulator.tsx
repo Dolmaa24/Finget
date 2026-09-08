@@ -1,16 +1,17 @@
 import { cn } from '../lib/cn';
 import React, { useMemo, useState } from 'react';
-import { Calculator, TrendingDown, Target, Info, RotateCcw } from 'lucide-react';
+import { Calculator, TrendingDown, Target, Info, RotateCcw, Flame } from 'lucide-react';
 import type { Affordability } from '../api';
 import { useSimulation } from '../hooks/useFinget';
 import { inr, clamp } from '../lib/format';
 import { Badge, Button, MoneyInput } from './ui';
 import { ShareTranslation } from './ShareTranslation';
 import { VaultButton } from './VaultButton';
+import { SavageConscience } from './SavageConscience';
 
 /**
  * "Can I buy this?" — types or drags an amount and shows what it costs in
- * budget headroom *and* in goal delay.
+ * budget headroom *and* in goal delay, with optional Savage Roast mode.
  */
 export const ScenarioSimulator: React.FC<{
   affordability: Affordability;
@@ -19,6 +20,7 @@ export const ScenarioSimulator: React.FC<{
   onHeld?: () => void;
 }> = ({ affordability, onPreview, onHeld }) => {
   const [amount, setAmount] = useState('');
+  const [viewMode, setViewMode] = useState<'rational' | 'roast'>('rational');
   const numeric = Number(amount) || 0;
   const { result, pending } = useSimulation(numeric);
 
@@ -41,7 +43,7 @@ export const ScenarioSimulator: React.FC<{
 
   return (
     <div className="glass glass-sheen rounded-lg p-6 flex flex-col">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <span className="w-9 h-9 rounded-md bg-[var(--accent-wash)] text-accent flex items-center justify-center">
             <Calculator className="w-[18px] h-[18px]" />
@@ -51,16 +53,47 @@ export const ScenarioSimulator: React.FC<{
             <p className="text-[12px] text-ink-3">Test the damage before you spend.</p>
           </div>
         </div>
-        {numeric > 0 && (
-          <button
-            type="button"
-            onClick={reset}
-            className="text-ink-3 hover:text-ink transition-colors p-1.5 rounded-pill hover:bg-white/50"
-            aria-label="Reset simulation"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-        )}
+
+        <div className="flex items-center gap-1.5">
+          {/* View Mode Toggle: Rational vs Savage Roast */}
+          <div className="flex items-center bg-black/5 dark:bg-white/10 p-0.5 rounded-pill">
+            <button
+              type="button"
+              onClick={() => setViewMode('rational')}
+              className={cn(
+                'px-2.5 py-1 text-xs font-semibold rounded-pill transition-all',
+                viewMode === 'rational'
+                  ? 'bg-white text-ink shadow-xs'
+                  : 'text-ink-3 hover:text-ink'
+              )}
+            >
+              Rational
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('roast')}
+              className={cn(
+                'px-2.5 py-1 text-xs font-semibold rounded-pill transition-all flex items-center gap-1',
+                viewMode === 'roast'
+                  ? 'bg-orange-500 text-white shadow-xs'
+                  : 'text-orange-600 dark:text-orange-400 hover:text-orange-500'
+              )}
+            >
+              <Flame className="w-3 h-3 fill-current" /> Savage
+            </button>
+          </div>
+
+          {numeric > 0 && (
+            <button
+              type="button"
+              onClick={reset}
+              className="text-ink-3 hover:text-ink transition-colors p-1.5 rounded-pill hover:bg-white/50"
+              aria-label="Reset simulation"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <MoneyInput
@@ -93,7 +126,9 @@ export const ScenarioSimulator: React.FC<{
       </div>
 
       <div className="mt-4 flex-1">
-        {numeric <= 0 ? (
+        {viewMode === 'roast' ? (
+          <SavageConscience amount={numeric} onHeld={onHeld} />
+        ) : numeric <= 0 ? (
           <div className="h-[150px] rounded-md border border-dashed border-white/70 bg-white/20 flex items-center justify-center">
             <p className="text-sm text-ink-3">Enter an amount to see the impact</p>
           </div>
@@ -189,7 +224,7 @@ export const ScenarioSimulator: React.FC<{
         )}
       </div>
 
-      {numeric > 0 && result && (
+      {numeric > 0 && (
         <Button variant="ghost" size="sm" className="mt-4 self-start" onClick={reset}>
           Clear
         </Button>

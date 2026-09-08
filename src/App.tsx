@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { LandingPage } from './pages/LandingPage';
 import { Dashboard } from './pages/Dashboard';
 import { GoalsPage } from './pages/GoalsPage';
 import { InsightsPage } from './pages/InsightsPage';
 import { AiCoachPage } from './pages/AiCoachPage';
+import { AiCreditsPage } from './pages/AiCreditsPage';
 import { FriendsModePage } from './pages/FriendsModePage';
 import { SplitPage } from './pages/SplitPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -42,6 +44,7 @@ function AppRoutes() {
         <Route path="/wrapped" element={<WrappedPage />} />
         <Route path="/insights" element={<InsightsPage />} />
         <Route path="/coach" element={<AiCoachPage />} />
+        <Route path="/ai-credits" element={<AiCreditsPage />} />
         <Route path="/friends" element={<FriendsModePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         {/* The extension opens this. Signed-out users land on the landing page
@@ -55,19 +58,23 @@ function AppRoutes() {
 }
 
 export default function App() {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
   return (
-    <BrowserRouter>
-      <ToastProvider>
-        <AuthProvider>
-          <ScopeProvider>
-            {/* Inside Auth and Scope: the sheet needs the user, and a Trip Pass
-                needs to know which group was being used. */}
-            <PaywallProvider>
-              <AppRoutes />
-            </PaywallProvider>
-          </ScopeProvider>
-        </AuthProvider>
-      </ToastProvider>
-    </BrowserRouter>
+    <GoogleOAuthProvider clientId={clientId}>
+      <BrowserRouter>
+        <ToastProvider>
+          <AuthProvider>
+            <ScopeProvider>
+              {/* Inside Auth and Scope: the sheet needs the user, and a Trip Pass
+                  needs to know which group was being used. */}
+              <PaywallProvider>
+                <AppRoutes />
+              </PaywallProvider>
+            </ScopeProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </BrowserRouter>
+    </GoogleOAuthProvider>
   );
 }

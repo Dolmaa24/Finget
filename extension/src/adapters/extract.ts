@@ -30,15 +30,19 @@ function fromSelectors(root: ParentNode, adapter: SiteAdapter): { el: Element; p
     try {
       nodes = Array.from(root.querySelectorAll(selector));
     } catch {
-      // A malformed selector is an edit mistake in sites.ts, not a page fault.
-      // Skip it rather than taking the whole extension down on this page.
       continue;
     }
 
+    let best: { el: Element; paise: number } | null = null;
     for (const el of nodes) {
       const paise = parsePriceToPaise(ownText(el));
-      if (paise !== null) return { el, paise };
+      if (paise !== null) {
+        if (!best || paise < best.paise) {
+          best = { el, paise };
+        }
+      }
     }
+    if (best) return best;
   }
   return null;
 }
@@ -57,12 +61,18 @@ function fromScan(root: ParentNode, adapter: SiteAdapter): { el: Element; paise:
       // on every mutation batch.
       const candidates = Array.from(container.querySelectorAll("span, div, p, strong, h1, h2")).slice(0, 400);
 
+      let bestInContainer: { el: Element; paise: number } | null = null;
       for (const el of candidates) {
         const text = ownText(el);
         if (!LOOKS_LIKE_PRICE.test(text)) continue;
         const paise = parsePriceToPaise(text);
-        if (paise !== null) return { el, paise };
+        if (paise !== null) {
+          if (!bestInContainer || paise < bestInContainer.paise) {
+            bestInContainer = { el, paise };
+          }
+        }
       }
+      if (bestInContainer) return bestInContainer;
     }
   }
   return null;

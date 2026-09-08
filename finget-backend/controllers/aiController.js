@@ -237,6 +237,40 @@ exports.getInsights = async (req, res) => {
   }
 };
 
+const { getSavageRoast } = require("../services/savageConscienceService");
+
+/**
+ * `POST /api/ai/roast` — The Savage Conscience reality-check generator.
+ */
+exports.savageRoast = async (req, res) => {
+  try {
+    const { itemOrCategory, amount, context, groupId, persona } = req.body;
+    const scope = await resolveScope({ userId: req.user, context, groupId });
+
+    const currentAffordability = affordabilityForScope(scope);
+    const goals = await goalsForScope(scope);
+    const worstGoal = goals?.[0] || null;
+
+    const result = await getSavageRoast({
+      itemOrCategory,
+      amount: Number(amount) || 0,
+      safeDaily: currentAffordability.safeDaily || 0,
+      remaining: currentAffordability.remaining || 0,
+      risk: currentAffordability.risk || "Safe",
+      worstGoal,
+      monthlyIncome: scope.owner.monthlyIncome || 0,
+      persona: persona || "savage",
+    });
+
+    res.json({
+      ...result,
+      aiEnabled: isAiConfigured(),
+    });
+  } catch (err) {
+    handleScopeError(err, res);
+  }
+};
+
 /**
  * `GET /api/ai/coach/usage` — how much of the free allowance is left.
  *
@@ -254,3 +288,4 @@ exports.getCoachUsage = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+

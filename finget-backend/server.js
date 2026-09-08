@@ -79,5 +79,9 @@ server.listen(PORT, () => {
   startReminderSweep();
   console.log("Silent Collector: running hourly");
 
+  const { startAiCreditSweep } = require("./jobs/aiCreditSweep");
+  startAiCreditSweep();
+  console.log("AI Credit Engine: sweep running hourly");
+
   if (startPushSweep()) console.log("Web Push: sweeping every 15 minutes");
 });

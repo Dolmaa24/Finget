@@ -51,7 +51,12 @@ export const ExtensionConnectPage: React.FC = () => {
   const connect = useCallback(async () => {
     setMinting(true);
     try {
-      const { token: plaintext } = await tokenApi.create('Browser extension');
+      const { token: plaintext } = await tokenApi.create('Browser extension', [
+        'translate',
+        'deflect',
+        'roast',
+        'goals',
+      ]);
       setToken(plaintext);
       // Hand it straight over. The extension validates it on first use.
       window.postMessage(

@@ -44,7 +44,7 @@ const apiTokenSchema = new mongoose.Schema({
   scopes: {
     type: [String],
     required: true,
-    enum: ["translate", "deflect", "ambient"],
+    enum: ["translate", "deflect", "ambient", "roast", "goals"],
     default: ["translate"],
     validate: [(v) => Array.isArray(v) && v.length > 0, "a token needs at least one scope"],
   },

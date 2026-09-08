@@ -13,12 +13,12 @@ import {
   ArrowRight,
   Sparkles,
 } from 'lucide-react';
-import { groupApi, type Group } from '../api';
+import { groupApi, goalApi, type Group } from '../api';
 import { useScope } from '../context/scopeStore';
 import { useAuth } from '../context/authStore';
 import { useToast } from '../context/toastStore';
 import { usePaywall } from '../context/paywallStore';
-import { Avatar, Badge, Button, EmptyState, Field, Input, Modal, PageHeader, Panel, SkeletonPanel } from '../components/ui';
+import { Avatar, Badge, Button, EmptyState, Field, Input, Modal, PageHeader, Panel, SkeletonPanel, MoneyInput } from '../components/ui';
 import { TripSettings } from '../components/TripSettings';
 import { GroupSplitSettings } from '../components/GroupSplitSettings';
 import { TripPassCard } from '../components/TripPassCard';
@@ -41,18 +41,55 @@ export const FriendsModePage: React.FC = () => {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
 
+  const [isTrip, setIsTrip] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [budget, setBudget] = useState('');
+  const [createGoalOption, setCreateGoalOption] = useState(true);
+
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
     setError('');
     try {
-      const group = await groupApi.create(name.trim(), emoji);
+      const tripFields = isTrip && startDate && endDate
+        ? {
+            kind: 'trip' as const,
+            startDate: startDate || null,
+            endDate: endDate || null,
+            potPaise: budget ? Number(budget) * 100 : 0,
+          }
+        : undefined;
+
+      const group = await groupApi.create(name.trim(), emoji, tripFields);
+
+      if (isTrip && createGoalOption && budget && Number(budget) > 0) {
+        try {
+          await goalApi.create(
+            { context: 'user' },
+            {
+              name: `Trip: ${group.name}`,
+              targetAmount: Number(budget),
+              deadline: startDate || undefined,
+              priority: 'High',
+            }
+          );
+        } catch (goalErr) {
+          console.error('Could not create savings goal:', goalErr);
+        }
+      }
+
       await reloadGroups();
       setScope('group', group._id);
       toast(`${group.name} created. Share code ${group.inviteCode} to invite people.`, 'success');
       setName('');
       setEmoji('👥');
+      setStartDate('');
+      setEndDate('');
+      setBudget('');
+      setIsTrip(true);
+      setCreateGoalOption(true);
       setCreateOpen(false);
       navigate('/dashboard');
     } catch (err) {
@@ -128,15 +165,15 @@ export const FriendsModePage: React.FC = () => {
     <div>
       <PageHeader
         eyebrow="Friends mode"
-        title="Groups"
-        subtitle="A group is a shared wallet: shared goals, split expenses and one settle-up sheet. Income is pooled only for the members who choose to share it."
+        title="Trips"
+        subtitle="A trip is a shared wallet: shared goals, split expenses and one settle-up sheet. Income is pooled only for the members who choose to share it."
         actions={
           <>
             <Button variant="glass" icon={<UserPlus className="w-4 h-4" />} onClick={() => setJoinOpen(true)}>
               Join
             </Button>
             <Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreateOpen(true)}>
-              New group
+              New trip
             </Button>
           </>
         }
@@ -151,12 +188,12 @@ export const FriendsModePage: React.FC = () => {
         <>
           <EmptyState
             icon={<Users className="w-6 h-6" />}
-            title="No groups yet"
-            body="Create one for a trip, a flatshare or a couple's budget — then invite people with a six-character code."
+            title="No trips yet"
+            body="Create a trip, a flatshare or a couple's budget — then invite people with a six-character code."
             action={
               <div className="flex gap-2.5">
                 <Button onClick={() => setCreateOpen(true)} icon={<Plus className="w-4 h-4" />}>
-                  Create a group
+                  Create a trip
                 </Button>
                 <Button variant="glass" onClick={() => setJoinOpen(true)}>
                   I have a code
@@ -206,7 +243,16 @@ export const FriendsModePage: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-ink text-lg truncate">{group.name}</h3>
-                      {active && <Badge tone="accent">Active</Badge>}
+                      {group.isActive ? (
+                        <Badge tone="safe">Active</Badge>
+                      ) : (
+                        <Badge tone="neutral">
+                          {group.inactiveSinceDays !== undefined
+                            ? `Inactive (${group.inactiveSinceDays} days)`
+                            : 'Inactive'}
+                        </Badge>
+                      )}
+                      {active && <Badge tone="accent">Current</Badge>}
                       {group.isAdmin && (
                         <Badge icon={<Crown className="w-3 h-3" />}>Admin</Badge>
                       )}
@@ -219,8 +265,7 @@ export const FriendsModePage: React.FC = () => {
                       says something a co-member is actually entitled to know.
                     */}
                     <p className="text-[12.5px] text-ink-3 mt-0.5">
-                      {group.members.length} member{group.members.length === 1 ? '' : 's'} · splits{' '}
-                      {group.splitMode === 'weighted' ? 'by income' : 'equally'}
+                      {group.members.length} member{group.members.length === 1 ? '' : 's'}
                     </p>
                   </div>
                 </div>
@@ -310,6 +355,23 @@ export const FriendsModePage: React.FC = () => {
                       Switch to this group
                     </Button>
                   )}
+                  {group.isAdmin && (
+                    <Button
+                      variant="ghost"
+                      onClick={async () => {
+                        try {
+                          await groupApi.update(group._id, { isActive: !group.isActive });
+                          await reloadGroups();
+                          toast(`Trip marked as ${!group.isActive ? 'Active' : 'Inactive'}.`, 'success');
+                        } catch (err) {
+                          toast(err instanceof Error ? err.message : 'Could not change status.', 'error');
+                        }
+                      }}
+                      title={group.isActive ? "Mark trip as settled and inactive" : "Mark trip as active"}
+                    >
+                      {group.isActive ? "Deactivate" : "Activate"}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     onClick={() => leave(group)}
@@ -332,11 +394,11 @@ export const FriendsModePage: React.FC = () => {
           setCreateOpen(false);
           setError('');
         }}
-        title="New group"
-        subtitle="You'll get an invite code to share."
+        title="New trip"
+        subtitle="You'll get an invite code to share. Fill in trip details to start tracking or saving."
       >
         <form onSubmit={create} className="space-y-5">
-          <Field label="Group name">
+          <Field label="Trip name">
             <Input
               autoFocus
               value={name}
@@ -365,6 +427,63 @@ export const FriendsModePage: React.FC = () => {
             </div>
           </Field>
 
+          <label className="flex items-center gap-2.5 cursor-pointer mt-4">
+            <input
+              type="checkbox"
+              checked={isTrip}
+              onChange={(e) => setIsTrip(e.target.checked)}
+              className="rounded border-white/60 bg-white/20 text-accent focus:ring-accent"
+            />
+            <span className="text-sm font-semibold text-ink-2">This is a trip (with dates and budget)</span>
+          </label>
+
+          {isTrip && (
+            <div className="space-y-4 pt-2 border-t border-white/30">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Starts">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    required={isTrip}
+                  />
+                </Field>
+                <Field label="Ends">
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    required={isTrip}
+                  />
+                </Field>
+              </div>
+
+              <Field
+                label="Budget (willing to spend)"
+                hint="Set the total budget for the trip."
+              >
+                <MoneyInput
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  placeholder="0"
+                  min="0"
+                />
+              </Field>
+
+              {budget && Number(budget) > 0 && (
+                <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={createGoalOption}
+                    onChange={(e) => setCreateGoalOption(e.target.checked)}
+                    className="rounded border-white/60 bg-white/20 text-accent focus:ring-accent"
+                  />
+                  <span className="text-sm text-ink-3">Add a saving goal to my goals for this trip</span>
+                </label>
+              )}
+            </div>
+          )}
+
           {error && (
             <p className="text-sm text-risk bg-[var(--risk-wash)] rounded-sm px-3.5 py-2.5">
               {error}
@@ -376,7 +495,7 @@ export const FriendsModePage: React.FC = () => {
               Cancel
             </Button>
             <Button type="submit" loading={busy}>
-              Create group
+              Create trip
             </Button>
           </div>
         </form>
@@ -389,7 +508,7 @@ export const FriendsModePage: React.FC = () => {
           setJoinOpen(false);
           setError('');
         }}
-        title="Join a group"
+        title="Join a trip"
         subtitle="Ask a member for the six-character invite code."
       >
         <form onSubmit={join} className="space-y-5">
@@ -416,7 +535,7 @@ export const FriendsModePage: React.FC = () => {
               Cancel
             </Button>
             <Button type="submit" loading={busy}>
-              Join group
+              Join trip
             </Button>
           </div>
         </form>

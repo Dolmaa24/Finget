@@ -4,6 +4,8 @@ import type {
   DeflectResult,
   Message,
   TranslateResult,
+  RoastResult,
+  WishlistResult,
 } from "./lib/messages";
 
 /**
@@ -130,9 +132,9 @@ async function requestTranslation(amountPaise: number): Promise<TranslateResult>
   }
 
   if (res.status === 401) {
-    // Revoked from Settings, or expired. Drop it so the popup can prompt a
-    // reconnect instead of retrying a dead credential on every page.
-    await disconnect();
+    // Revoked from Settings, or expired. 
+    // TEMPORARILY DISABLED: Do not disconnect so the session persists across backend restarts.
+    // await disconnect();
     return { ok: false, reason: "logged-out" };
   }
   if (res.status === 429) return { ok: false, reason: "rate-limited" };
@@ -205,7 +207,7 @@ async function deflect(amountPaise: number, label: string, sourceUrl?: string): 
   }
 
   if (res.status === 401) {
-    await disconnect();
+    // await disconnect();
     return { ok: false, reason: "logged-out" };
   }
   if (res.status === 429) return { ok: false, reason: "rate-limited" };
@@ -229,6 +231,58 @@ async function deflect(amountPaise: number, label: string, sourceUrl?: string): 
 }
 
 /* ------------------------------------------------------------------ */
+/* Roast & Wishlist                                                   */
+/* ------------------------------------------------------------------ */
+
+async function getRoast(amountPaise: number, label: string): Promise<RoastResult> {
+  const { token, apiBaseUrl } = await readStorage();
+  if (!token) return { ok: false, reason: "logged-out" };
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/api/ai/roast`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      // API expects amount in rupees, amountPaise / 100
+      body: JSON.stringify({ amount: amountPaise / 100, itemOrCategory: label, context: "user" }),
+    });
+
+    if (res.status === 401) {
+      // await disconnect();
+      return { ok: false, reason: "logged-out" };
+    }
+    if (!res.ok) return { ok: false, reason: "error" };
+
+    const data = await res.json();
+    return { ok: true, roast: data.roast };
+  } catch {
+    return { ok: false, reason: "offline" };
+  }
+}
+
+async function addWishlist(amountPaise: number, label: string): Promise<WishlistResult> {
+  const { token, apiBaseUrl } = await readStorage();
+  if (!token) return { ok: false, reason: "logged-out" };
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/api/goals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ targetAmount: amountPaise / 100, name: `🎁 Wishlist: ${label}`, priority: "Medium", context: "user" }),
+    });
+
+    if (res.status === 401) {
+      // await disconnect();
+      return { ok: false, reason: "logged-out" };
+    }
+    if (!res.ok) return { ok: false, reason: "error" };
+
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "offline" };
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -240,6 +294,12 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         break;
       case "deflect":
         sendResponse(await deflect(message.amountPaise, message.label, message.sourceUrl));
+        break;
+      case "roast":
+        sendResponse(await getRoast(message.amountPaise, message.label));
+        break;
+      case "wishlist":
+        sendResponse(await addWishlist(message.amountPaise, message.label));
         break;
       case "get-state":
         sendResponse(await getState());

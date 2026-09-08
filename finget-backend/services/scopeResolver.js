@@ -116,6 +116,7 @@ async function goalsForScope(scope) {
 
 /** Turns a ScopeError into a response; rethrows anything unexpected. */
 function handleScopeError(err, res) {
+  console.error("[ScopeError Handler]:", err);
   if (err instanceof ScopeError) {
     return res.status(err.status).json({ msg: err.msg });
   }

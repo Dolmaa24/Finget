@@ -115,7 +115,7 @@ export const ModeSwitch: React.FC<{ compact?: boolean }> = ({ compact = false })
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium text-ink truncate">{g.name}</span>
                 <span className="block text-[11px] text-ink-3">
-                  {g.members.length} member{g.members.length === 1 ? '' : 's'}
+                  {g.members.length} member{g.members.length === 1 ? '' : 's'} · Code: {g.inviteCode}
                 </span>
               </span>
               {groupId === g._id && <Check className="w-4 h-4 text-accent shrink-0" />}

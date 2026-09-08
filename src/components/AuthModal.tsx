@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { authApi } from '../api';
 import { useAuth } from '../context/authStore';
 import { Button, Field, Input, Modal, MoneyInput } from './ui';
+import { GoogleLogin } from '@react-oauth/google';
 
 export const AuthModal: React.FC<{
   open: boolean;
@@ -31,12 +32,35 @@ export const AuthModal: React.FC<{
     setError('');
 
     try {
+      if (tab === 'signup') {
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+        if (!emailRegex.test(form.email.trim())) {
+          throw new Error('Please enter a valid Gmail address (e.g. user@gmail.com).');
+        }
+
+        const pwd = form.password;
+        if (pwd.length <= 6) {
+          throw new Error('Password must be more than 6 characters.');
+        }
+        if (!/[A-Z]/.test(pwd)) {
+          throw new Error('Password must contain at least one uppercase (capital) letter.');
+        }
+        if (!/[a-z]/.test(pwd)) {
+          throw new Error('Password must contain at least one lowercase (small) letter.');
+        }
+        if (!/[0-9]/.test(pwd)) {
+          throw new Error('Password must contain at least one number.');
+        }
+      }
+
+      const normalizedEmail = form.email.trim().toLowerCase();
+
       const result =
         tab === 'login'
-          ? await authApi.login({ email: form.email, password: form.password })
+          ? await authApi.login({ email: normalizedEmail, password: form.password })
           : await authApi.signup({
               name: form.name,
-              email: form.email,
+              email: normalizedEmail,
               password: form.password,
               monthlyIncome: Number(form.monthlyIncome) || 0,
             });
@@ -80,6 +104,36 @@ export const AuthModal: React.FC<{
         ))}
       </div>
 
+      <div className="flex justify-center mb-6">
+        <GoogleLogin
+          onSuccess={async (credentialResponse) => {
+            if (!credentialResponse.credential) return;
+            setLoading(true);
+            setError('');
+            try {
+              const result = await authApi.google({ token: credentialResponse.credential });
+              signIn(result.token, result.user);
+              onClose();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Google authentication failed');
+            } finally {
+              setLoading(false);
+            }
+          }}
+          onError={() => setError('Google authentication failed')}
+          useOneTap
+        />
+      </div>
+
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-white/20"></div>
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 text-ink-3" style={{ background: 'var(--bg-app, transparent)' }}>Or continue with email</span>
+        </div>
+      </div>
+
       <form onSubmit={submit} className="space-y-4">
         {tab === 'signup' && (
           <Field label="Full name">
@@ -94,16 +148,26 @@ export const AuthModal: React.FC<{
             onChange={set('email')}
             required
             autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </Field>
 
-        <Field label="Password" hint={tab === 'signup' ? 'At least 6 characters.' : undefined}>
+        <Field
+          label="Password"
+          hint={
+            tab === 'signup'
+              ? 'Must be more than 6 characters and contain uppercase, lowercase, and numbers.'
+              : undefined
+          }
+        >
           <Input
             type="password"
             value={form.password}
             onChange={set('password')}
             required
-            minLength={tab === 'signup' ? 6 : undefined}
+            minLength={tab === 'signup' ? 7 : undefined}
             autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
           />
         </Field>

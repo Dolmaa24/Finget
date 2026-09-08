@@ -57,6 +57,28 @@ if (adapter) {
       if (lastPaise !== hit.pricePaise) return;
 
       renderChip(hit.anchorEl, result.translation);
+
+      // Asynchronously fetch the savage roast and inject it into the chip
+      chrome.runtime.sendMessage({
+        type: "roast",
+        amountPaise: hit.pricePaise,
+        label: document.title,
+      }).then((roastResult) => {
+        const host = document.getElementById("finget-chip-host");
+        if (host && host.shadowRoot) {
+          const headlineText = host.shadowRoot.querySelector("#finget-headline") as HTMLElement;
+          if (headlineText) {
+            if (roastResult?.ok) {
+              headlineText.textContent = roastResult.roast;
+              headlineText.style.fontStyle = "normal";
+              headlineText.style.color = "#262019";
+            } else {
+              headlineText.textContent = "Your conscience is quiet today.";
+            }
+          }
+        }
+      }).catch(() => { /* ignore */ });
+
     } catch {
       // Extension context invalidated (a reload during development), or the
       // page tore the node out from under us. Neither is worth surfacing.

@@ -11,6 +11,9 @@ import {
   Sparkles,
   Receipt,
   Smartphone,
+  Copy,
+  Check,
+  Share2,
 } from 'lucide-react';
 import { groupApi } from '../api';
 import { useScope } from '../context/scopeStore';
@@ -44,6 +47,32 @@ export const SplitPage: React.FC = () => {
   } | null>(null);
   const [settleAmount, setSettleAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyCode = async () => {
+    if (!group?.inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(group.inviteCode);
+      setCopied(true);
+      toast('Invite code copied.', 'success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast('Could not copy code.', 'error');
+    }
+  };
+
+  const shareToWhatsApp = () => {
+    if (!group) return;
+    const shareUrl = group.previewToken ? `${window.location.origin}/join/${group.previewToken}` : null;
+    let text = `Join my group "${group.name}" on Finget to split and settle expenses!\n`;
+    if (shareUrl) {
+      text += `Link: ${shareUrl}\n`;
+    }
+    text += `Or use invite code: *${group.inviteCode}*`;
+
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
 
   useGroupLiveSync();
 
@@ -111,6 +140,36 @@ export const SplitPage: React.FC = () => {
         eyebrow={`Friends mode · ${group?.name ?? ''}`}
         title="Split & settle"
         subtitle="Who fronted what, who owes whom, and the fewest transfers that clear it."
+        actions={
+          group?.inviteCode && (
+            <div className="glass glass-sheen rounded-md px-3.5 py-2 flex items-center gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">Invite code</p>
+                <p className="text-sm font-semibold tracking-[0.1em] text-ink numeric">{group.inviteCode}</p>
+              </div>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={copyCode}
+                  aria-label="Copy invite code"
+                  className="p-2 rounded-pill text-ink-3 hover:text-accent hover:bg-white/60 transition-colors animate-fade"
+                  title="Copy invite code"
+                >
+                  {copied ? <Check className="w-4 h-4 text-safe animate-pop" /> : <Copy className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={shareToWhatsApp}
+                  aria-label="Share to WhatsApp"
+                  className="p-2 rounded-pill text-ink-3 hover:text-accent hover:bg-white/60 transition-colors"
+                  title="Share to WhatsApp"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )
+        }
       />
 
       {loading ? (

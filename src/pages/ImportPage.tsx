@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Copy,
   Trash2,
+  FileText,
 } from 'lucide-react';
 import {
   importApi,
@@ -60,6 +61,7 @@ export const ImportPage: React.FC = () => {
   const [committing, setCommitting] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     importApi.status().then(setStatus).catch(() => setStatus(null));
@@ -116,6 +118,34 @@ export const ImportPage: React.FC = () => {
       }
     },
     [scope, status, toast]
+  );
+
+  const readPdf = useCallback(
+    async (file: File) => {
+      // 5MB limit max for PDF to avoid blowing up the token window
+      if (file.size > 5 * 1024 * 1024) {
+        toast('That PDF is too large. Try a smaller one (under 5MB).', 'error');
+        return;
+      }
+
+      setParsing(true);
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error('Could not read that file'));
+          reader.readAsDataURL(file);
+        });
+
+        const res = await importApi.parsePdf(scope, dataUrl);
+        setRows((prev) => [...(prev || []), ...res.rows]);
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Could not read that PDF.', 'error');
+      } finally {
+        setParsing(false);
+      }
+    },
+    [scope, toast]
   );
 
   /** Paste a screenshot straight from the clipboard — the common gesture. */
@@ -259,6 +289,33 @@ export const ImportPage: React.FC = () => {
                 'Screenshot reading is not connected on this server. Pasting your bank SMS above works without it and handles most imports.'}
             </p>
           )}
+        </Panel>
+
+        {/* PDF Bank Statement */}
+        <Panel>
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <span className="w-9 h-9 rounded-md bg-[var(--accent-wash)] text-accent flex items-center justify-center">
+              <FileText className="w-[18px] h-[18px]" />
+            </span>
+            <h2 className="font-semibold text-ink">Bank Statement (PDF)</h2>
+          </div>
+          <p className="text-[13px] text-ink-2 mb-5">
+            Upload your bank statement PDF directly. Finget will scan all pages and extract transactions securely. (Max 5MB)
+          </p>
+          <input
+            ref={pdfRef}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) readPdf(file);
+              e.target.value = '';
+            }}
+          />
+          <Button variant="glass" onClick={() => pdfRef.current?.click()} loading={parsing}>
+            Choose PDF statement
+          </Button>
         </Panel>
 
         {/* The review sheet */}

@@ -10,6 +10,14 @@ const { isAiConfigured } = require("./services/aiClient");
 function createApp() {
   const app = express();
 
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${res.statusCode} (${Date.now() - start}ms)`);
+    });
+    next();
+  });
+
   const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173,http://localhost:4173")
     .split(",")
     .map((o) => o.trim())
@@ -104,6 +112,7 @@ function createApp() {
   app.use("/api/receipts", express.json({ limit: "9mb" }), require("./routes/receiptRoutes"));
   app.use("/api/tokens", require("./routes/apiTokenRoutes"));
   app.use("/api/deflections", require("./routes/deflectionRoutes"));
+  app.use("/api/ai-credits", require("./routes/aiCreditRoutes"));
   app.use("/api/notifications", require("./routes/notificationRoutes"));
   app.use("/api/push", require("./routes/pushRoutes"));
   app.use("/api/share", require("./routes/shareCardRoutes"));

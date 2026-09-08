@@ -52,6 +52,7 @@ function serializeGroup(group, userId) {
     /** Members only. A stranger gets `previewToken` in a link, never in a payload. */
     previewToken: group.previewToken || null,
     isAdmin: isGroupAdmin(group, userId),
+    isActive: group.isActive !== false,
 
     /**
      * The group's Trip Pass, so the UI can stop selling one that already
@@ -80,6 +81,49 @@ function serializeGroup(group, userId) {
       // Yours only. See the note above this function.
       monthlyIncome: idOf(m) === idOf(userId) ? m.monthlyIncome || 0 : undefined,
     })),
+  };
+}
+
+async function resolveGroupStatus(group, userId) {
+  const base = serializeGroup(group, userId);
+
+  if (group.isActive === false) {
+    return { ...base, isActive: false, inactiveReason: "Manually deactivated" };
+  }
+
+  const now = new Date();
+  if (group.kind === "trip" && group.endDate && new Date(group.endDate) >= now) {
+    return { ...base, isActive: true };
+  }
+
+  const [transactions, settlements] = await Promise.all([
+    Transaction.find({ groupId: group._id }).lean(),
+    Settlement.find({ groupId: group._id }).lean(),
+  ]);
+
+  const balancesPaise = computeBalancesPaise(transactions, settlements);
+  const isSettled = Array.from(balancesPaise.values()).every((val) => Math.abs(val) <= 100);
+
+  if (!isSettled) {
+    return { ...base, isActive: true };
+  }
+
+  let lastActiveDate = group.createdAt || new Date();
+  const allItems = [...transactions, ...settlements].sort(
+    (a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0)
+  );
+  if (allItems.length > 0) {
+    lastActiveDate = allItems[0].date || allItems[0].createdAt || lastActiveDate;
+  }
+
+  const daysSinceSettled = (now - new Date(lastActiveDate)) / (1000 * 60 * 60 * 24);
+  const autoInactive = daysSinceSettled > 1;
+
+  return {
+    ...base,
+    isActive: !autoInactive,
+    inactiveSinceDays: autoInactive ? Math.max(0, Math.floor(daysSinceSettled)) : undefined,
+    lastActiveDate: new Date(lastActiveDate).toISOString(),
   };
 }
 
@@ -209,7 +253,7 @@ exports.createGroup = async (req, res) => {
     });
 
     await group.populate("members", "name email monthlyIncome upiId");
-    res.json(serializeGroup(group, req.user));
+    res.json(await resolveGroupStatus(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -229,7 +273,7 @@ exports.joinByCode = async (req, res) => {
 
     if (isGroupMember(group, req.user)) {
       await group.populate("members", "name email monthlyIncome upiId");
-      return res.json(serializeGroup(group, req.user));
+      return res.json(await resolveGroupStatus(group, req.user));
     }
 
     group.members.push(req.user);
@@ -239,7 +283,7 @@ exports.joinByCode = async (req, res) => {
     const io = req.app.get("io");
     if (io) io.to(`group:${group._id}`).emit("group:updated", { groupId: String(group._id) });
 
-    res.json(serializeGroup(group, req.user));
+    res.json(await resolveGroupStatus(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -250,7 +294,8 @@ exports.getGroups = async (req, res) => {
     const groups = await Group.find({ members: req.user })
       .populate("members", "name email monthlyIncome upiId")
       .sort({ createdAt: -1 });
-    res.json(groups.map((g) => serializeGroup(g, req.user)));
+    const serialized = await Promise.all(groups.map((g) => resolveGroupStatus(g, req.user)));
+    res.json(serialized);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -260,7 +305,7 @@ exports.getGroup = async (req, res) => {
   try {
     const group = await loadGroupForMember(req.params.id, req.user);
     if (!group) return res.status(403).json({ msg: "Not authorized for this group" });
-    res.json(serializeGroup(group, req.user));
+    res.json(await resolveGroupStatus(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -274,7 +319,7 @@ exports.updateGroup = async (req, res) => {
       return res.status(403).json({ msg: "Only group admins can edit the group" });
     }
 
-    const { name, emoji, splitMode, remindersEnabled } = req.body;
+    const { name, emoji, splitMode, remindersEnabled, isActive } = req.body;
     if (name && name.trim()) group.name = name.trim();
     if (emoji) group.emoji = emoji;
 
@@ -283,6 +328,10 @@ exports.updateGroup = async (req, res) => {
         return res.status(400).json({ msg: "splitMode must be 'equal' or 'weighted'" });
       }
       group.splitDefaults = { ...(group.splitDefaults || {}), mode: splitMode };
+    }
+
+    if (isActive !== undefined) {
+      group.isActive = Boolean(isActive);
     }
 
     // Admins can switch the Silent Collector off for the whole group. They
@@ -300,7 +349,7 @@ exports.updateGroup = async (req, res) => {
 
     await group.save();
 
-    res.json(serializeGroup(group, req.user));
+    res.json(await resolveGroupStatus(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -877,7 +926,7 @@ exports.joinByPreviewToken = async (req, res) => {
     }
 
     await group.populate("members", "name email monthlyIncome upiId");
-    res.json(serializeGroup(group, req.user));
+    res.json(await resolveGroupStatus(group, req.user));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

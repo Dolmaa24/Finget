@@ -61,19 +61,18 @@ exports.calculateAffordability = (owner, transactions, settings, opts = {}) => {
   if (remaining < 0) risk = "Risky";
 
   return {
-    safeDaily,
-    remaining,
-    risk,
     income,
     baseIncome,
-    extraIncome,
-    expenses,
-    savingsTarget,
+    remaining,
+    safeDaily,
+    risk,
+    daysLeftInMonth: daysLeft,
     emergencyBuffer,
-    /** Surfaced so the UI can say *why* the number is lower than the maths implies. */
+    savingsTarget,
     held,
     heldPaise,
-    daysLeftInMonth: daysLeft,
+    expenses,
+    extraIncome,
     monthlyBurnRate: expenses,
   };
 };

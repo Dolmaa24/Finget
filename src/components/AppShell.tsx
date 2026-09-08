@@ -17,6 +17,7 @@ import {
   Plus,
   Menu,
   X,
+  Cpu,
 } from 'lucide-react';
 import { useAuth } from '../context/authStore';
 import { useScope } from '../context/scopeStore';
@@ -38,15 +39,16 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-[19px] h-[19px]" />, modes: 'both' },
   { to: '/transactions', label: 'Activity', icon: <Receipt className="w-[19px] h-[19px]" />, modes: 'both' },
-  { to: '/import', label: 'Import', icon: <Upload className="w-[19px] h-[19px]" />, modes: 'both' },
+  { to: '/import', label: 'Import', icon: <Upload className="w-[19px] h-[19px]" />, modes: 'user' },
   { to: '/goals', label: 'Goals', icon: <Target className="w-[19px] h-[19px]" />, modes: 'both' },
   { to: '/split', label: 'Split & settle', icon: <Users className="w-[19px] h-[19px]" />, modes: 'group' },
   { to: '/wrapped', label: 'Wrapped', icon: <Trophy className="w-[19px] h-[19px]" />, modes: 'group' },
-  { to: '/future-impact', label: 'What-if', icon: <Sparkles className="w-[19px] h-[19px]" />, modes: 'both' },
-  { to: '/ledger', label: 'Kept', icon: <PiggyBank className="w-[19px] h-[19px]" />, modes: 'both' },
-  { to: '/insights', label: 'Insights', icon: <Lightbulb className="w-[19px] h-[19px]" />, modes: 'both' },
-  { to: '/coach', label: 'AI Coach', icon: <MessageSquare className="w-[19px] h-[19px]" />, modes: 'both' },
-  { to: '/friends', label: 'Groups', icon: <Users className="w-[19px] h-[19px]" />, modes: 'user' },
+  { to: '/future-impact', label: 'What-if', icon: <Sparkles className="w-[19px] h-[19px]" />, modes: 'user' },
+  { to: '/ledger', label: 'Kept', icon: <PiggyBank className="w-[19px] h-[19px]" />, modes: 'user' },
+  { to: '/insights', label: 'Insights', icon: <Lightbulb className="w-[19px] h-[19px]" />, modes: 'user' },
+  { to: '/coach', label: 'AI Coach', icon: <MessageSquare className="w-[19px] h-[19px]" />, modes: 'user' },
+  { to: '/ai-credits', label: 'AI Credits', icon: <Cpu className="w-[19px] h-[19px]" />, modes: 'user' },
+  { to: '/friends', label: 'Trips', icon: <Users className="w-[19px] h-[19px]" />, modes: 'user' },
   { to: '/settings', label: 'Settings', icon: <Settings className="w-[19px] h-[19px]" />, modes: 'both' },
 ];
 

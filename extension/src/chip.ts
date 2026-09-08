@@ -88,6 +88,7 @@ const STYLES = `
 .risk--Safe { color: #2f8f63; }
 .risk--Warning { color: #b8802b; }
 .risk--Risky { color: #c0503c; }
+.risk--Extremely { color: #e63946; font-weight: 800; }
 
 button {
   font: inherit;
@@ -104,15 +105,16 @@ button {
 button:disabled { color: #a9a096; background: rgba(60, 48, 38, 0.06); cursor: default; }
 button:focus-visible { outline: 2px solid #5b54d6; outline-offset: 2px; }
 button.held { color: #2f8f63; background: rgba(47, 143, 99, 0.12); }
+.actions { display: flex; gap: 6px; flex-shrink: 0; }
 .note { font-size: 12px; color: #5f574e; flex-basis: 100%; }
 .note--error { color: #c0503c; }
 `;
 
-/** The risk clause. Calm, factual, never a verdict about the person. */
 const RISK_TEXT: Record<ChipTranslation["riskAfter"], string> = {
-  Safe: "you'd still be Safe",
-  Warning: "this gets close to your buffer",
-  Risky: "this goes past your buffer",
+  Safe: "Normal",
+  Warning: "Medium (think about it)",
+  Risky: "Is it really necessary?",
+  "Extremely Risky": "Extremely risky! Will this actually help you in the future?",
 };
 
 /** What the ledger will call this, read off the page. See lib/label.ts. */
@@ -169,16 +171,18 @@ export function renderChip(anchor: Element, translation: ChipTranslation) {
 
     const headline = document.createElement("span");
     headline.className = "headline";
-    // `headline` is server-generated but contains a user's own goal name.
-    // textContent, never innerHTML.
-    headline.textContent = translation.headline;
+    headline.id = "finget-headline";
+    headline.textContent = "Consulting the Savage Conscience...";
+    headline.style.fontStyle = "italic";
+    headline.style.color = "#5f574e";
 
     const sep2 = document.createElement("span");
     sep2.className = "sep";
     sep2.textContent = "·";
 
+    const riskClass = translation.riskAfter === "Extremely Risky" ? "risk--Extremely" : `risk--${translation.riskAfter}`;
     const risk = document.createElement("span");
-    risk.className = `risk risk--${translation.riskAfter}`;
+    risk.className = `risk ${riskClass}`;
     risk.textContent = RISK_TEXT[translation.riskAfter] ?? "";
 
     /**
@@ -234,11 +238,42 @@ export function renderChip(anchor: Element, translation: ChipTranslation) {
       }
     });
 
+    const wishlist = document.createElement("button");
+    wishlist.type = "button";
+    wishlist.textContent = "Add to Wishlist";
+    wishlist.title = "Save this item as a goal in Finget";
+
+    wishlist.addEventListener("click", async () => {
+      wishlist.disabled = true;
+      wishlist.textContent = "Adding...";
+      try {
+        const result = await chrome.runtime.sendMessage({
+          type: "wishlist",
+          amountPaise: translation.amountPaise,
+          label: pageLabel(),
+        });
+        if (result?.ok) {
+          wishlist.textContent = "Added to Goals!";
+          wishlist.classList.add("held");
+        } else {
+          wishlist.textContent = "Add to Wishlist";
+          wishlist.disabled = false;
+        }
+      } catch {
+        wishlist.textContent = "Add to Wishlist";
+        wishlist.disabled = false;
+      }
+    });
+
     const text = document.createElement("div");
     text.className = "text";
     text.append(dot, amount, sep, headline, sep2, risk);
 
-    chip.append(text, deflect, note);
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.append(deflect, wishlist);
+
+    chip.append(text, actions, note);
 
     // Move the host next to the price rather than leaving it on <body>.
     const host = root.host as HTMLElement;
